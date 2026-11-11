@@ -1,5 +1,13 @@
 # OmniCare MVP 验证报告
 
+> **STATUS CORRECTION (2026-11-11):** the rows below that say the NanoMemory/mem-guard
+> adapters are "not connected" are superseded by the section *Contract alignment with
+> NanoMemory 0.2.0 and mem-guard 0.1.0* at the end of this file. Current verified state:
+> `pytest contract_tests -q` → **12 passed** (8 integration contracts + 4 UI contracts).
+> The full FastAPI + SQLite suite remains **NOT VERIFIED** in this environment (no
+> `sqlalchemy`/`aiosqlite`). CI is defined in `.github/workflows/ci.yml`.
+
+
 **报告日期：** 2026-11-11  
 **项目版本：** 0.1.0  
 **交付状态：** Local MVP / Architecture Baseline（不是 Production Ready）
@@ -63,7 +71,7 @@ run without the database/model stack.
 - Fixtures were captured from a real NanoMemory TestClient run:
   tests/fixtures/nanomemory_contract.json.
 
-Verified in this environment: python -m pytest contract_tests -q -> 8 passed.
+Verified in this environment: python -m pytest contract_tests -q -> 12 passed.
 
 Remaining, explicitly not verified: full FastAPI + SQLite integration (no sqlalchemy/aiosqlite),
 real DeepSeek calls, MCP Inspector, Docker and n8n. Trust minting is still adapter-attested

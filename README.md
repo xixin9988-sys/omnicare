@@ -175,3 +175,9 @@ Static preview without the backend:
 python -m http.server 8123 --directory web
 # open http://127.0.0.1:8123/
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE). The open-core boundary (what stays private) is documented
+in [LICENSING.md](LICENSING.md); the engineering audit and P0/P1/P2 plan is in
+[ENGINEERING_AUDIT.md](ENGINEERING_AUDIT.md).
