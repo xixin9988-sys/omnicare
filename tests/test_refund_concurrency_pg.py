@@ -46,20 +46,50 @@ async def seed_order(total: str = "100.00") -> None:
 async def test_two_concurrent_requests_cannot_both_pass_the_balance_check() -> None:
     await seed_order("100.00")
 
+    async def submit(reason: str) -> str:
+        async with SessionLocal() as db:
+            context = ToolContext(
+                user_id="alice", session_id="s1", run_id="r1", db=db, governance=None
+            )
+            result = await request_refund(
+                RefundArgs(order_id="ORD-1", amount=Decimal("60.00"), reason=reason), context
+            )
+            await db.commit()
+            if not result.success:
+                return str(result.error_code)
+            return "duplicate" if result.data.get("duplicate") else "created"
+
+    # Different reasons mean different fingerprints, so the partial unique index cannot
+    # collapse them: only the order row lock can stop the double spend.
+    results = await asyncio.gather(submit("damaged box"), submit("wrong size"))
+
+    assert sorted(results) == ["created", "refund_exceeds_authoritative_limit"], results
+    async with SessionLocal() as db:
+        rows = list((await db.scalars(select(RefundRequest))).all())
+        assert len(rows) == 1
+        assert sum(row.amount for row in rows) <= Decimal("100.00")
+
+
+@pytest.mark.asyncio
+async def test_identical_retries_collapse_onto_one_request() -> None:
+    await seed_order("100.00")
+
     async def submit() -> str:
         async with SessionLocal() as db:
             context = ToolContext(
                 user_id="alice", session_id="s1", run_id="r1", db=db, governance=None
             )
             result = await request_refund(
-                RefundArgs(order_id="ORD-1", amount=Decimal("60.00")), context
+                RefundArgs(order_id="ORD-1", amount=Decimal("60.00"), reason="same"), context
             )
             await db.commit()
-            return "created" if result.success else str(result.error_code)
+            if not result.success:
+                return str(result.error_code)
+            return "duplicate" if result.data.get("duplicate") else "created"
 
     results = await asyncio.gather(submit(), submit())
 
-    assert sorted(results) == ["created", "refund_exceeds_authoritative_limit"]
+    assert sorted(results) == ["created", "duplicate"], results
     async with SessionLocal() as db:
         rows = list((await db.scalars(select(RefundRequest))).all())
         assert len(rows) == 1
