@@ -4,6 +4,8 @@ Run: python -m app.mcp_server
 Endpoint: http://127.0.0.1:9000/mcp (Streamable HTTP)
 """
 
+import hmac
+
 from mcp.server import MCPServer
 from sqlalchemy import select
 
@@ -33,14 +35,24 @@ async def search_products(query: str) -> list[dict]:
 
 
 @mcp.tool()
-async def check_logistics(order_id: str) -> dict:
-    """Check logistics for the configured demo user. Production must derive tenant/user identity from authenticated host context."""
+async def check_logistics(order_id: str, user_id: str, auth_token: str = "") -> dict:
+    """Check logistics for an explicitly authenticated caller.
+
+    The caller must present the configured MCP token (constant-time compare) and its own
+    ``user_id``; the order must belong to that user. There is no fixed demo identity here.
+    """
+    settings = get_settings()
+    if not settings.mcp_auth_token:
+        if settings.app_env.lower() != "local":
+            return {"ok": False, "error": "mcp_auth_not_configured"}
+    elif not hmac.compare_digest(
+        auth_token.encode("utf-8"), settings.mcp_auth_token.encode("utf-8")
+    ):
+        return {"ok": False, "error": "mcp_auth_failed"}
+
     await init_db()
-    effective_user = get_settings().demo_user_id
     async with SessionLocal() as db:
-        order = await db.scalar(
-            select(Order).where(Order.id == order_id, Order.user_id == effective_user)
-        )
+        order = await db.scalar(select(Order).where(Order.id == order_id, Order.user_id == user_id))
         if not order:
             return {"ok": False, "error": "order_not_found_or_not_owned"}
         return {

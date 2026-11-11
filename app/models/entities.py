@@ -53,6 +53,9 @@ class RefundRequest(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     reason: Mapped[str] = mapped_column(String(500), default="用户申请退款")
     status: Mapped[str] = mapped_column(String(40), default="pending_review")
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(80), nullable=True, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 

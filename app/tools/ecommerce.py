@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
 from app.models.entities import Order, Product, RefundRequest
+from app.services.refunds import available_refund, open_refund_total
 from app.tools.registry import Permission, ToolContext, ToolRegistry, ToolResult, ToolSpec
 
 
@@ -19,6 +20,7 @@ class RefundArgs(BaseModel):
     order_id: str = Field(min_length=1, max_length=64)
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     reason: str = Field(default="用户申请退款", max_length=500)
+    idempotency_key: str | None = Field(default=None, max_length=80)
 
 
 async def get_logistics(args: LogisticsArgs, ctx: ToolContext) -> ToolResult:
@@ -61,17 +63,58 @@ async def search_products(args: ProductSearchArgs, ctx: ToolContext) -> ToolResu
 
 
 async def request_refund(args: RefundArgs, ctx: ToolContext) -> ToolResult:
+    # Lock the order so two concurrent requests cannot both pass the balance check.
     order = await ctx.db.scalar(
-        select(Order).where(Order.id == args.order_id, Order.user_id == ctx.user_id)
+        select(Order)
+        .where(Order.id == args.order_id, Order.user_id == ctx.user_id)
+        .with_for_update()
     )
     if not order:
         return ToolResult(False, {}, "order_not_found", "没有找到属于你的订单。")
+
+    if args.idempotency_key:
+        existing = await ctx.db.scalar(
+            select(RefundRequest).where(
+                RefundRequest.idempotency_key == args.idempotency_key,
+                RefundRequest.user_id == ctx.user_id,
+            )
+        )
+        if existing is not None:
+            return ToolResult(
+                True,
+                {
+                    "refund_request_id": existing.id,
+                    "order_id": existing.order_id,
+                    "amount": str(existing.amount),
+                    "status": existing.status,
+                    "duplicate": True,
+                },
+                message="该退款申请已存在（幂等命中），未重复创建。",
+            )
+
+    available = await available_refund(ctx.db, order)
+    requested = args.amount
+    open_total = await open_refund_total(ctx.db, order.id)
+    if requested > available:
+        return ToolResult(
+            False,
+            {
+                "order_id": order.id,
+                "requested": str(requested),
+                "available": str(available),
+                "open_requests": str(open_total),
+            },
+            "refund_exceeds_authoritative_limit",
+            f"可退余额不足：可退 {available:.2f}，已有待审核/已批准 {open_total:.2f}。",
+        )
+
     refund = RefundRequest(
         order_id=order.id,
         user_id=ctx.user_id,
-        amount=args.amount,
+        amount=requested,
         reason=args.reason,
         status="pending_review",
+        idempotency_key=args.idempotency_key,
     )
     ctx.db.add(refund)
     await ctx.db.flush()

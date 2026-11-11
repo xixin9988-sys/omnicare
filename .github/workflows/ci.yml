@@ -38,7 +38,6 @@ jobs:
   full-suite:
     name: full suite (non-blocking until Phase 1.5)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

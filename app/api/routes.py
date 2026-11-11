@@ -1,3 +1,12 @@
+"""HTTP and WebSocket routes.
+
+Identity is never read from a request body: every mutating route resolves a :class:`Principal`
+from the ``Authorization`` bearer token (or the dev header) and uses that user id. Admin routes
+require the ``admin`` role; the monitor socket requires the same.
+"""
+
+from __future__ import annotations
+
 from datetime import UTC, datetime
 
 from fastapi import (
@@ -7,11 +16,19 @@ from fastapi import (
     Query,
     WebSocket,
     WebSocketDisconnect,
+    status,
 )
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_supervisor
+from app.api.deps import (
+    Principal,
+    authenticate_ws,
+    get_principal,
+    get_supervisor,
+    require_admin,
+)
+from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.events import broker
 from app.models.entities import (
@@ -33,13 +50,26 @@ async def health():
 
 
 @router.post("/sessions", status_code=201)
-async def create_session(payload: SessionCreate, db: AsyncSession = Depends(get_db)):
-    user = await db.get(User, payload.user_id)
+async def create_session(
+    payload: SessionCreate,
+    principal: Principal = Depends(get_principal),
+    db: AsyncSession = Depends(get_db),
+):
+    # The body may echo a user id, but it is only a claim: the token decides who this is.
+    if payload.user_id and payload.user_id != principal.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "user_id_mismatch",
+                "message": "The authenticated user does not match the requested user id.",
+            },
+        )
+    user = await db.get(User, principal.user_id)
     if user is None:
-        user = User(id=payload.user_id, display_name="OmniCare Demo User")
+        user = User(id=principal.user_id, display_name="OmniCare User")
         db.add(user)
         await db.flush()
-    session = ConversationSession(user_id=payload.user_id)
+    session = ConversationSession(user_id=principal.user_id)
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -53,17 +83,31 @@ async def create_session(payload: SessionCreate, db: AsyncSession = Depends(get_
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
-    payload: ChatRequest, supervisor=Depends(get_supervisor), db: AsyncSession = Depends(get_db)
+    payload: ChatRequest,
+    supervisor=Depends(get_supervisor),
+    principal: Principal = Depends(get_principal),
+    db: AsyncSession = Depends(get_db),
 ):
-    session = await db.get(ConversationSession, payload.session_id)
-    if session is None or session.user_id != payload.user_id or session.status != "active":
+    if payload.user_id and payload.user_id != principal.user_id:
         raise HTTPException(
-            status_code=404, detail={"code": "session_not_found", "message": "会话不存在或不可用。"}
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "user_id_mismatch",
+                "message": "The authenticated user does not match the requested user id.",
+            },
         )
-    result = await supervisor.run(
-        user_id=payload.user_id, session_id=payload.session_id, message=payload.message, db=db
+    session = await db.get(ConversationSession, payload.session_id)
+    if session is None or session.user_id != principal.user_id or session.status != "active":
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "session_not_found", "message": "Session not found or not usable."},
+        )
+    return await supervisor.run(
+        user_id=principal.user_id,
+        session_id=payload.session_id,
+        message=payload.message,
+        db=db,
     )
-    return result
 
 
 @router.get("/products", response_model=list[ProductOut])
@@ -75,7 +119,9 @@ async def products(q: str = Query(default="", max_length=120), db: AsyncSession 
 
 
 @router.get("/metrics/summary")
-async def metrics_summary(db: AsyncSession = Depends(get_db)):
+async def metrics_summary(
+    _: Principal = Depends(require_admin), db: AsyncSession = Depends(get_db)
+):
     total_runs = int(await db.scalar(select(func.count(AgentRun.id))) or 0)
     blocked = int(
         await db.scalar(select(func.count(AgentRun.id)).where(AgentRun.status == "blocked")) or 0
@@ -106,7 +152,9 @@ async def metrics_summary(db: AsyncSession = Depends(get_db)):
 
 @router.get("/events")
 async def recent_events(
-    limit: int = Query(default=100, ge=1, le=500), db: AsyncSession = Depends(get_db)
+    _: Principal = Depends(require_admin),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
 ):
     rows = (
         await db.scalars(select(AgentEvent).order_by(desc(AgentEvent.created_at)).limit(limit))
@@ -128,7 +176,9 @@ async def recent_events(
 
 @router.get("/governance/incidents")
 async def governance_incidents(
-    limit: int = Query(default=100, ge=1, le=500), db: AsyncSession = Depends(get_db)
+    _: Principal = Depends(require_admin),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
 ):
     rows = (
         await db.scalars(
@@ -151,11 +201,21 @@ async def governance_incidents(
 
 
 @router.websocket("/ws/monitor")
-async def monitor_ws(websocket: WebSocket):
-    await broker.connect(websocket)
+async def monitor_ws(
+    websocket: WebSocket,
+    token: str | None = Query(default=None),
+    admin_key: str | None = Query(default=None),
+):
+    settings = get_settings()
+    principal = authenticate_ws(token=token, admin_key=admin_key, settings=settings)
+    if principal is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    if not await broker.connect(websocket):
+        await websocket.close(code=status.WS_1013_TRY_AGAIN_LATER)
+        return
     try:
         while True:
-            # Keepalive/optional client messages. Agent events are pushed by EventBroker.
             await websocket.receive_text()
     except WebSocketDisconnect:
         broker.disconnect(websocket)

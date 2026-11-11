@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -16,9 +17,10 @@ class LocalFileMemoryAdapter:
         self._lock = asyncio.Lock()
 
     def _path(self, user_id: str) -> Path:
-        # Keep untrusted user identifiers out of filesystem paths.
-        safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", user_id)[:64] or "anonymous"
-        return self.root / f"{safe_id}.jsonl"
+        # Hash the identifier: sanitising is not isolation, because two ids can sanitise to
+        # the same name (``alice@example.com`` vs ``alice_example.com``).
+        digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:32]
+        return self.root / f"{digest}.jsonl"
 
     async def retrieve(
         self, *, user_id: str, session_id: str, query: str, limit: int = 6

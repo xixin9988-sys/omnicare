@@ -32,6 +32,12 @@ class Settings(BaseSettings):
 
     demo_user_id: str = "demo_user_001"
     admin_api_key: str = ""
+
+    # Authentication. ``dev`` trusts X-User-Id and is refused when APP_ENV=production.
+    auth_mode: str = "dev"
+    auth_secret: str = ""
+    auth_token_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
+    mcp_auth_token: str = ""
     log_level: str = "INFO"
 
     @property

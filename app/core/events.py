@@ -14,9 +14,14 @@ class EventBroker:
     def __init__(self) -> None:
         self._connections: set[WebSocket] = set()
 
-    async def connect(self, websocket: WebSocket) -> None:
+    MAX_CONNECTIONS = 50
+
+    async def connect(self, websocket: WebSocket) -> bool:
+        if len(self._connections) >= self.MAX_CONNECTIONS:
+            return False
         await websocket.accept()
         self._connections.add(websocket)
+        return True
 
     def disconnect(self, websocket: WebSocket) -> None:
         self._connections.discard(websocket)
