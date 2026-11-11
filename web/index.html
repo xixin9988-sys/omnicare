@@ -1,0 +1,59 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OmniCare · Agent Memory &amp; Governance</title>
+  <link rel="stylesheet" href="./css/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js",
+        "three/addons/": "./vendor/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene" aria-label="OmniCare realtime scene"></canvas>
+
+  <header class="hud hud-top">
+    <div class="brand">
+      <span class="mark"></span>
+      <div>
+        <h1>OmniCare</h1>
+        <p>Agent · Memory · Governance</p>
+      </div>
+    </div>
+    <div class="status" id="status" data-state="connecting">connecting</div>
+  </header>
+
+  <aside class="hud hud-side" id="panel">
+    <section>
+      <h2>Runtime</h2>
+      <dl id="stats">
+        <dt>events</dt><dd id="stat-events">0</dd>
+        <dt>memory hits</dt><dd id="stat-memory">0</dd>
+        <dt>blocked</dt><dd id="stat-blocked">0</dd>
+        <dt>refunds</dt><dd id="stat-refund">0</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Stream</h2>
+      <ul id="stream" class="stream"></ul>
+    </section>
+    <section>
+      <h2>Legend</h2>
+      <ul class="legend">
+        <li><i class="dot agent"></i>agent</li>
+        <li><i class="dot memory"></i>memory</li>
+        <li><i class="dot blocked"></i>governance block</li>
+        <li><i class="dot tool"></i>tool call</li>
+      </ul>
+    </section>
+  </aside>
+
+  <p class="hud hint">拖曳旋轉 · 滾輪縮放</p>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

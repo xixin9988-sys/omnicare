@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnicare-agent-platform"
+version = "0.1.0"
+description = "Enterprise e-commerce multi-agent platform MVP"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Proprietary - replace before distribution"}
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+  "pydantic>=2.8,<3.0",
+  "pydantic-settings>=2.4,<3.0",
+  "sqlalchemy[asyncio]>=2.0.36,<3.0",
+  "aiosqlite>=0.20,<1.0",
+  "httpx>=0.27,<1.0",
+  "openai>=1.50,<3.0",
+  "mcp>=2.0,<3.0",
+  "python-json-logger>=2.0,<4.0",
+]
+
+[project.optional-dependencies]
+# Real integrations, installed from the public GitHub projects.
+integrations = [
+  "mem-guard @ git+https://github.com/xixin9988-sys/mem-guard.git@v0.1.1",
+  "nanomemory @ git+https://github.com/xixin9988-sys/nanomemory.git@v0.2.0",
+]
+dev = [
+  "pytest>=8.3,<9.0",
+  "pytest-asyncio>=0.24,<2.0",
+  "httpx>=0.27,<1.0",
+  "ruff>=0.8,<1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

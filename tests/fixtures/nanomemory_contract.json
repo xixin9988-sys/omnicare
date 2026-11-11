@@ -1,0 +1,149 @@
+{
+  "captured_from": "NanoMemory 0.2.0 TestClient (real routes)",
+  "create_response": {
+    "id": "mem-235c4d8f7e014dd3",
+    "content": "User prefers dark mode.",
+    "category": "preference",
+    "created_at": "2026-11-11T07:10:59.359484+00:00",
+    "updated_at": "2026-11-11T07:10:59.359484+00:00",
+    "source": "omnicare",
+    "source_type": "user",
+    "confidence": "medium",
+    "importance": 3,
+    "tags": [
+      "omnicare"
+    ],
+    "status": "active",
+    "trust_level": "unknown",
+    "version": 1,
+    "schema_version": 2,
+    "related_ids": [],
+    "review_reason": null,
+    "memory_type": "fact",
+    "user_id": null,
+    "valid_from": null,
+    "valid_until": null,
+    "provenance": {
+      "source_kind": "unknown",
+      "source_ref": null,
+      "derived_from": [],
+      "created_by": "unknown",
+      "note": null
+    },
+    "supersedes": [],
+    "superseded_by": null,
+    "last_recalled_at": null,
+    "recall_count": 0
+  },
+  "list_response": {
+    "count": 1,
+    "records": [
+      {
+        "id": "mem-235c4d8f7e014dd3",
+        "content": "User prefers dark mode.",
+        "category": "preference",
+        "created_at": "2026-11-11T07:10:59.359484+00:00",
+        "updated_at": "2026-11-11T07:10:59.359484+00:00",
+        "source": "omnicare",
+        "source_type": "user",
+        "confidence": "medium",
+        "importance": 3,
+        "tags": [
+          "omnicare"
+        ],
+        "status": "active",
+        "trust_level": "unknown",
+        "version": 1,
+        "schema_version": 2,
+        "related_ids": [],
+        "review_reason": null,
+        "memory_type": "fact",
+        "user_id": null,
+        "valid_from": null,
+        "valid_until": null,
+        "provenance": {
+          "source_kind": "unknown",
+          "source_ref": null,
+          "derived_from": [],
+          "created_by": "unknown",
+          "note": null
+        },
+        "supersedes": [],
+        "superseded_by": null,
+        "last_recalled_at": null,
+        "recall_count": 0
+      }
+    ],
+    "capacity": {
+      "capacity_used": 1,
+      "capacity_limit": 5000,
+      "capacity_percent": 0
+    }
+  },
+  "recall_response": {
+    "query": "what does the user prefer?",
+    "intent": "preference",
+    "insufficient_context": false,
+    "fallback_reason": null,
+    "estimated_tokens": 53,
+    "budget": 6400,
+    "items": [
+      {
+        "id": "working:11111111-1111-4111-8111-111111111111",
+        "kind": "working",
+        "content": "Current goal: 尚未設定\nStatus: idle\nNext action: 等待使用者輸入",
+        "score": 0.0,
+        "tokens": 22,
+        "reason": "always included: current goal, blockers and next action",
+        "memory_type": null,
+        "status": null,
+        "signals": null
+      },
+      {
+        "id": "mem-235c4d8f7e014dd3",
+        "kind": "long_term",
+        "content": "User prefers dark mode. (category: preference [omnicare])",
+        "score": 0.48,
+        "tokens": 15,
+        "reason": "semantic 0.55, keyword 0.55, recency 1.00, importance 0.50",
+        "memory_type": "fact",
+        "status": "active",
+        "signals": {
+          "semantic": 0.55,
+          "keyword": 0.55,
+          "relation": 0.0,
+          "recency": 1.0,
+          "importance": 0.5
+        }
+      },
+      {
+        "id": "evt-bd54232ba8b2409a9bb7",
+        "kind": "episodic",
+        "content": "memory_created: memory_created",
+        "score": 0.35,
+        "tokens": 8,
+        "reason": "recent event",
+        "memory_type": null,
+        "status": null,
+        "signals": {
+          "keyword": 0.0,
+          "recency": 1.0
+        }
+      },
+      {
+        "id": "evt-4a6d5a037fe84558bf55",
+        "kind": "episodic",
+        "content": "memory_updated: memory_updated",
+        "score": 0.35,
+        "tokens": 8,
+        "reason": "recent event",
+        "memory_type": null,
+        "status": null,
+        "signals": {
+          "keyword": 0.0,
+          "recency": 1.0
+        }
+      }
+    ]
+  }
+}
