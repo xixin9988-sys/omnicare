@@ -1,4 +1,4 @@
-﻿"""Governance adapter backed by the real **mem-guard** SDK.
+"""Governance adapter backed by the real **mem-guard** SDK.
 
 mem-guard supplies the rule engine and trust vocabulary; business authorization that needs the
 database (refund limits, order ownership) stays in :class:`LocalPolicyGuard`, because mem-guard

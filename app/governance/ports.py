@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol, Any
+from typing import Any, Protocol
 
 
 @dataclass(slots=True)
@@ -12,6 +12,8 @@ class GuardDecision:
 
 class GovernancePort(Protocol):
     def validate_memory(self, memory: Any) -> GuardDecision: ...
-    async def authorize_action(self, *, action: str, args: dict, context: dict, db: Any) -> GuardDecision: ...
+    async def authorize_action(
+        self, *, action: str, args: dict, context: dict, db: Any
+    ) -> GuardDecision: ...
     def evaluate_input(self, text: str) -> GuardDecision: ...
     def evaluate_output(self, text: str) -> GuardDecision: ...

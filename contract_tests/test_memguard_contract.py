@@ -12,8 +12,8 @@ import pytest
 
 mem_guard = pytest.importorskip("mem_guard", reason="mem-guard SDK not on PYTHONPATH")
 
-from app.governance.memguard_adapter import MemGuardAdapter  # noqa: E402
-from app.governance.ports import GuardDecision  # noqa: E402
+from app.governance.memguard_adapter import MemGuardAdapter
+from app.governance.ports import GuardDecision
 
 
 class _Memory:

@@ -1,6 +1,7 @@
 from xml.sax.saxutils import escape
-from app.providers.base import LLMResult
+
 from app.core.config import Settings
+from app.providers.base import LLMResult
 
 
 class OpenAICompatibleProvider:

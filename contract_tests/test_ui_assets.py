@@ -21,7 +21,7 @@ def test_index_wires_three_and_canvas() -> None:
     html = (WEB / "index.html").read_text(encoding="utf-8")
     assert '<canvas id="scene"' in html
     assert '"three":' in html and "three.module.js" in html
-    assert "type=\"module\"" in html and "js/app.js" in html
+    assert 'type="module"' in html and "js/app.js" in html
 
 
 def test_scene_uses_websocket_and_demo_fallback() -> None:

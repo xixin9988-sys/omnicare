@@ -28,9 +28,14 @@ class IntentRouter:
             return Route(Intent.REFUND, "aftersales_agent", order_id=order_id)
         if any(word in text for word in ["物流", "快递", "到哪", "发货", "催发", "运单", "配送"]):
             return Route(Intent.LOGISTICS, "logistics_agent", order_id=order_id)
-        if any(word in text for word in ["商品", "价格", "库存", "推荐", "购买", "多少钱", "鞋", "耳机"]):
+        if any(
+            word in text
+            for word in ["商品", "价格", "库存", "推荐", "购买", "多少钱", "鞋", "耳机"]
+        ):
             query = text
             for word in ["请问", "帮我", "我想买", "查一下", "搜索", "商品"]:
                 query = query.replace(word, " ")
-            return Route(Intent.PRODUCT, "shopping_agent", product_query=query.strip()[:120] or text[:120])
+            return Route(
+                Intent.PRODUCT, "shopping_agent", product_query=query.strip()[:120] or text[:120]
+            )
         return Route(Intent.GENERAL, "general_agent")

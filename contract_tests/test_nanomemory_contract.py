@@ -19,9 +19,9 @@ from app.core.config import Settings
 from app.memory.nanomemory_http import NanoMemoryHTTPAdapter
 
 FIXTURE = json.loads(
-    (Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "nanomemory_contract.json").read_text(
-        encoding="utf-8-sig"
-    )
+    (
+        Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "nanomemory_contract.json"
+    ).read_text(encoding="utf-8-sig")
 )
 
 
@@ -50,7 +50,9 @@ def _adapter(recorder: _Recorder) -> NanoMemoryHTTPAdapter:
 async def test_retrieve_maps_only_long_term_items_and_trust() -> None:
     recorder = _Recorder()
     adapter = _adapter(recorder)
-    records = await adapter.retrieve(user_id="u1", session_id="s1", query="what does the user prefer?")
+    records = await adapter.retrieve(
+        user_id="u1", session_id="s1", query="what does the user prefer?"
+    )
 
     assert records, "recall should yield long-term items"
     assert all(record.id.startswith("mem-") for record in records)
@@ -73,7 +75,7 @@ async def test_remember_preference_posts_real_create_payload() -> None:
     )
 
     assert record.trust_level == "user_stated"
-    create = [r for r in recorder.requests if r.method == "POST"][0]
+    create = next(r for r in recorder.requests if r.method == "POST")
     body = json.loads(create.content)
     assert body["content"] == "User prefers dark mode."
     assert body["category"] == "preference"

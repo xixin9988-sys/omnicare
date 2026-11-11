@@ -45,3 +45,9 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI dependency injection is idiomatic B008; exception boundaries are deliberate BLE001.
+"app/api/routes.py" = ["B008", "BLE001"]
+"app/core/events.py" = ["BLE001"]
+"app/tools/registry.py" = ["BLE001"]

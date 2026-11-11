@@ -1,4 +1,5 @@
 import asyncio
+
 from app.core.db import init_db
 from app.main import seed_demo_data
 

@@ -1,12 +1,13 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, JSON, Boolean, Index
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -101,7 +102,9 @@ class AgentEvent(Base):
     agent: Mapped[str] = mapped_column(String(80), default="supervisor")
     status: Mapped[str] = mapped_column(String(30), default="info")
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, index=True
+    )
 
 
 class GovernanceIncident(Base):
@@ -114,5 +117,6 @@ class GovernanceIncident(Base):
     reason_code: Mapped[str] = mapped_column(String(80))
     detail: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
 
 Index("ix_agent_events_created_type", AgentEvent.created_at, AgentEvent.event_type)

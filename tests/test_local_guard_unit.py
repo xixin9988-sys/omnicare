@@ -1,10 +1,13 @@
 from types import SimpleNamespace
+
 from app.governance.local_guard import LocalPolicyGuard
 
 
 def test_memory_without_provenance_is_quarantined():
     guard = LocalPolicyGuard()
-    decision = guard.validate_memory(SimpleNamespace(state="ACTIVE", source="unknown", trust_level="unknown"))
+    decision = guard.validate_memory(
+        SimpleNamespace(state="ACTIVE", source="unknown", trust_level="unknown")
+    )
     assert not decision.allowed
     assert decision.decision == "quarantine"
     assert decision.reason_code == "memory_provenance_missing"
@@ -12,7 +15,9 @@ def test_memory_without_provenance_is_quarantined():
 
 def test_quarantined_memory_is_not_accepted():
     guard = LocalPolicyGuard()
-    decision = guard.validate_memory(SimpleNamespace(state="QUARANTINED", source="user", trust_level="user_asserted"))
+    decision = guard.validate_memory(
+        SimpleNamespace(state="QUARANTINED", source="user", trust_level="user_asserted")
+    )
     assert not decision.allowed
     assert decision.reason_code == "memory_state_not_active"
 
