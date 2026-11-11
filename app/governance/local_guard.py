@@ -93,7 +93,9 @@ class LocalPolicyGuard:
 
     def evaluate_output(self, text: str) -> GuardDecision:
         # A simple anti-false-claim check for the demo. Business write is never described as paid.
-        if re.search(r"退款已到账|已经完成退款|钱已退回", text):
+        # Negated statements ("并非退款已到账", "不代表退款已经完成") are not claims.
+        claim_text = re.sub(r"(并非|不代表|尚未|还未|不是)[^。！？\n]{0,24}", "", text)
+        if re.search(r"退款已到账|已经完成退款|钱已退回", claim_text):
             return GuardDecision(
                 False,
                 "quarantine",

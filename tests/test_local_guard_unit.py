@@ -39,3 +39,13 @@ def test_contradictory_refund_intent_is_intercepted():
     decision = guard.evaluate_input("我不要退款，但是请帮我申请退款")
     assert not decision.allowed
     assert decision.reason_code == "contradictory_refund_intent"
+
+
+def test_negated_completion_claim_is_allowed():
+    guard = LocalPolicyGuard()
+    allowed = guard.evaluate_output("当前状态为待审核，并非退款已到账。")
+    assert allowed.allowed is True
+
+    blocked = guard.evaluate_output("退款已到账，请查收。")
+    assert blocked.allowed is False
+    assert blocked.reason_code == "unverified_refund_completion_claim"

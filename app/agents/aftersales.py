@@ -5,6 +5,7 @@ from sqlalchemy import desc, select
 
 from app.agents.router import Route
 from app.models.entities import Order
+from app.services.refunds import available_refund
 from app.tools.ecommerce import RefundArgs
 from app.tools.registry import ToolContext, ToolRegistry
 
@@ -33,7 +34,7 @@ class AfterSalesAgent:
             r"(?:退款|退)\s*(?:金额)?\s*[¥￥]?\s*([0-9]+(?:\.[0-9]{1,2})?)", text
         )
         if amount_match is None:
-            refundable = Decimal(order.total_amount) - Decimal(order.refunded_amount)
+            refundable = await available_refund(context.db, order)
             return (
                 f"已找到订单 {order.id}。当前可申请退款上限为 ¥{refundable:.2f}，"
                 "请告诉我你希望申请的具体金额；我不会默认替你申请全部金额。"
