@@ -7,7 +7,9 @@
 - FastAPI 异步 API、会话、聊天消息和结构化业务数据。
 - Rule-first Supervisor 路由：物流、售后退款、导购、通用问答。
 - 专家 Agent 与明确 Tool Registry；所有工具参数由 Pydantic 校验。
-- 工具执行前治理：订单归属、可退金额上限、订单状态；退款只创建 `pending_review` 申请，不触发真实打款。
+- 工具执行前治理：订单归属、可退金额上限、订单状态；退款只创建 `pending_review` 申请，
+  由管理员经 `POST /api/v1/refunds/{id}/decision` 审批（`approve`/`reject`/`settle`，四眼原则，
+  逐条审计），**不触发真实打款**。
 - MemoryPort 适配层：本地 JSONL demo adapter，及按 NanoMemory 文档 REST 路由/Session Header 编写的 HTTP adapter。
 - GovernancePort 适配层：本地确定性演示策略；替换为你的 mem-guard SDK adapter 时不需要改 Supervisor。
 - WebSocket `/api/v1/ws/monitor` 实时推送 Agent/Tool 事件；REST metrics/event endpoints 提供历史数据。
@@ -149,26 +151,47 @@ ruff format --check .
 
 详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)、[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-## Contract alignment with NanoMemory 0.2.0 and mem-guard 0.1.0 (2026-11-11)
+## Verification status (2026-11-11, v0.1.2)
 
-Both adapters were rewritten against the real public surfaces and covered by contract tests that
-run without the database/model stack.
+Replaces the earlier "8 passed" note. Every number below is reproducible with the commands in
+§8; nothing here is claimed as production-grade authentication.
 
-- Memory adapter (app/memory/nanomemory_http.py) now uses the real routes: GET
-  /api/v1/memory/recall for governed retrieval and GET /api/v1/memory/long-term for trust
-  enrichment; POST /api/v1/memory/long-term for preference writes with source_type=user.
-- Governance adapter (app/governance/memguard_adapter.py) uses the real mem-guard SDK (Guard,
+| Check | Where | Result |
+| --- | --- | --- |
+| `pytest contract_tests -q` | local, no DB | **48 passed** |
+| `pytest tests -q` (SQLite) | CI + local replica | **24 passed, 2 skipped** |
+| `pytest tests -q` (PostgreSQL 16) | CI `full-suite` job | **25 passed** (row-lock and concurrency tests) |
+| `ruff check .` / `ruff format --check .` | CI + local | clean |
+| Boot guard: `APP_ENV=production AUTH_MODE=dev` | local | import raises `ConfigurationError` |
+
+CI (`.github/workflows/ci.yml`) blocks on all three jobs: `contracts`, `ruff`, and
+`full suite (blocking)` — the last one runs the suite twice (SQLite, then PostgreSQL 16).
+Green reference run: `8bbefe5` on `main`, release [v0.1.2](https://github.com/xixin9988-sys/omnicare/releases/tag/v0.1.2).
+
+- Memory adapter (`app/memory/nanomemory_http.py`) uses the real NanoMemory 0.2.0 routes:
+  `GET /api/v1/memory/recall` for governed retrieval, `GET /api/v1/memory/long-term` for trust
+  enrichment, `POST /api/v1/memory/long-term` for preference writes with `source_type=user`.
+- Governance adapter (`app/governance/memguard_adapter.py`) uses the real mem-guard SDK (Guard,
   RuleCompiler, TrustLevel) for input/output rules and trust vocabulary; business authorization
-  that needs the database remains in LocalPolicyGuard and is composed inside the adapter.
-  GOVERNANCE_BACKEND=memguard selects it.
+  that needs the database stays in LocalPolicyGuard and is composed inside the adapter
+  (`GOVERNANCE_BACKEND=memguard`).
 - Fixtures were captured from a real NanoMemory TestClient run:
-  tests/fixtures/nanomemory_contract.json.
+  `tests/fixtures/nanomemory_contract.json`.
 
-Verified in this environment: python -m pytest contract_tests -q -> 8 passed.
+Security work from the two audit rounds is tracked in [SECURITY_FIXES.md](SECURITY_FIXES.md):
+V-01…V-08 (token identity, refund math, admin scoping, memory-file collision, MCP, WS, CI) and
+R-01…R-04 (fail-closed preflight, MCP identity binding, server-side refund idempotency,
+PostgreSQL row locks).
 
-Remaining, explicitly not verified: full FastAPI + SQLite integration (no sqlalchemy/aiosqlite),
-real DeepSeek calls, MCP Inspector, Docker and n8n. Trust minting is still adapter-attested
-because mem-guard 0.1.0 has no issuer registry; tracked for mem-guard v0.1.1.
+### Still NOT VERIFIED
+
+Docker image build and both compose overlays (no Docker in the dev environment), MCP server
+runtime / MCP Inspector (the `mcp` SDK is not installed there; only `app/mcp_auth.py` is unit
+tested), real DeepSeek calls, n8n delivery, payment-gateway settlement of an approved refund,
+IdP/RBAC/tenant scoping, and Alembic migrations.
+
+Trust minting is still adapter-attested because mem-guard v0.1.1 ships without an issuer
+registry.
 
 ## Realtime UI (Three.js)
 

@@ -1,5 +1,21 @@
 # Engineering audit — OmniCare MVP 0.1.0
 
+> **Status update, 2026-11-11 (`main` = `8bbefe5`, release v0.1.2).** This file is kept as the
+> record of the 0.1.0 audit; the findings below are closed or re-scoped as follows.
+>
+> - **P0-1** full runtime: closed — `tests/` runs green (SQLite locally, PostgreSQL 16 in CI).
+> - **P0-2** CI: closed — `.github/workflows/ci.yml` has three blocking jobs
+>   (`contracts`, `ruff`, `full suite`), the last one running SQLite *and* PostgreSQL.
+> - **P0-3** contradictory verification report: closed — `VERIFICATION_REPORT.md` is now a single
+>   status table (48 contract / 24+2 SQLite / 25 PG).
+> - **P0-4** `user_id` as identity: closed — HMAC bearer tokens, dev identity only in
+>   local/dev/test, and `app/core/preflight.py` refuses to boot an unsafe combination.
+> - **P2-3** refund workflow: closed at the application layer — `pending_review → approved |
+>   rejected`, `approved → settled`, four-eyes rule, append-only `refund_audit`, admin API. Still
+>   open: payment-gateway settlement and ledger reconciliation.
+> - **P2-1** Docker: still open (never built; only the YAML is validated).
+> - Details and residual risk: [`SECURITY_FIXES.md`](SECURITY_FIXES.md).
+
 Scope: the public checkout at commit `d62c2bd` (private GitHub repo `xixin9988-sys/omnicare`).
 Every finding below is tied to a file or command that exists in this repository; nothing is
 asserted from memory.
