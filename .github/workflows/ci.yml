@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install contract dependencies
-        run: |
+        run: |-
           python -m pip install --upgrade pip
           pip install fastapi pydantic pydantic-settings httpx pytest pytest-asyncio
           pip install "mem-guard @ git+https://github.com/xixin9988-sys/mem-guard.git@v0.1.1"
@@ -36,16 +36,34 @@ jobs:
       - run: ruff format --check .
 
   full-suite:
-    name: full suite (non-blocking until Phase 1.5)
+    name: full suite (blocking)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: omnicare
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install project
-        run: |
+        run: |-
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Run full tests
+      - name: Run full tests (SQLite)
+        run: pytest tests -q
+      - name: Run full tests (PostgreSQL row locks and concurrency)
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/omnicare
         run: pytest tests -q

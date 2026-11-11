@@ -2,8 +2,10 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.entities import Order, Product, RefundRequest
+from app.services.refund_state import OPEN_STATUSES, refund_fingerprint
 from app.services.refunds import available_refund, lock_clause, open_refund_total
 from app.tools.registry import Permission, ToolContext, ToolRegistry, ToolResult, ToolSpec
 
@@ -71,25 +73,19 @@ async def request_refund(args: RefundArgs, ctx: ToolContext) -> ToolResult:
     if not order:
         return ToolResult(False, {}, "order_not_found", "没有找到属于你的订单。")
 
-    if args.idempotency_key:
+    # The dedupe key is derived by the server from (order, amount, reason): a retry that
+    # forgets to send idempotency_key still collapses onto the existing open request.
+    fingerprint = refund_fingerprint(order.id, args.amount, args.reason)
+    existing = await _open_request_for(ctx.db, order.id, fingerprint)
+    if existing is None and args.idempotency_key:
         existing = await ctx.db.scalar(
             select(RefundRequest).where(
                 RefundRequest.idempotency_key == args.idempotency_key,
                 RefundRequest.user_id == ctx.user_id,
             )
         )
-        if existing is not None:
-            return ToolResult(
-                True,
-                {
-                    "refund_request_id": existing.id,
-                    "order_id": existing.order_id,
-                    "amount": str(existing.amount),
-                    "status": existing.status,
-                    "duplicate": True,
-                },
-                message="该退款申请已存在（幂等命中），未重复创建。",
-            )
+    if existing is not None:
+        return _duplicate_result(existing)
 
     available = await available_refund(ctx.db, order)
     requested = args.amount
@@ -113,10 +109,19 @@ async def request_refund(args: RefundArgs, ctx: ToolContext) -> ToolResult:
         amount=requested,
         reason=args.reason,
         status="pending_review",
+        fingerprint=fingerprint,
         idempotency_key=args.idempotency_key,
     )
-    ctx.db.add(refund)
-    await ctx.db.flush()
+    try:
+        # Savepoint: a unique-index hit must not poison the caller's session.
+        async with ctx.db.begin_nested():
+            ctx.db.add(refund)
+            await ctx.db.flush()
+    except IntegrityError:
+        existing = await _open_request_for(ctx.db, order.id, fingerprint)
+        if existing is not None:
+            return _duplicate_result(existing)
+        return ToolResult(False, {}, "refund_conflict", "退款申请冲突，请稍后重试。")
     return ToolResult(
         True,
         {
@@ -126,6 +131,30 @@ async def request_refund(args: RefundArgs, ctx: ToolContext) -> ToolResult:
             "status": refund.status,
         },
         message="退款申请已提交审核；这不代表退款已经到账。",
+    )
+
+
+async def _open_request_for(db, order_id: str, fingerprint: str) -> RefundRequest | None:
+    return await db.scalar(
+        select(RefundRequest).where(
+            RefundRequest.order_id == order_id,
+            RefundRequest.fingerprint == fingerprint,
+            RefundRequest.status.in_(OPEN_STATUSES),
+        )
+    )
+
+
+def _duplicate_result(existing: RefundRequest) -> ToolResult:
+    return ToolResult(
+        True,
+        {
+            "refund_request_id": existing.id,
+            "order_id": existing.order_id,
+            "amount": str(existing.amount),
+            "status": existing.status,
+            "duplicate": True,
+        },
+        message="该退款申请已存在（幂等命中），未重复创建。",
     )
 
 

@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from decimal import Decimal
 
@@ -9,6 +10,7 @@ from app.api.routes import router
 from app.core.config import get_settings
 from app.core.db import SessionLocal, init_db
 from app.core.logging import configure_logging
+from app.core.preflight import enforce
 from app.governance.factory import create_governance_adapter
 from app.integrations.n8n import N8NClient
 from app.memory.factory import create_memory_adapter
@@ -19,6 +21,12 @@ from app.tools.ecommerce import build_registry
 
 settings = get_settings()
 configure_logging()
+
+# Refuse to boot an unsafe combination (AUTH_MODE=dev in production, weak secrets, ...).
+# This is a hard failure on purpose: a misconfigured deployment must not serve one request.
+preflight = enforce(settings)
+for _issue in preflight.warnings:
+    logging.getLogger(__name__).warning("config: %s %s", _issue.code, _issue.message)
 
 
 async def seed_demo_data() -> None:

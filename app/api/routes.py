@@ -40,8 +40,21 @@ from app.models.entities import (
     User,
 )
 from app.schemas.chat import ChatRequest, ChatResponse, ProductOut, SessionCreate
+from app.schemas.refunds import RefundAuditOut, RefundDecisionRequest, RefundOut
+from app.services.refund_approval import (
+    RefundApprovalError,
+    audit_trail,
+    decide_refund,
+    list_refunds,
+)
 
 router = APIRouter()
+
+_DECISION_STATUS = {
+    "refund_not_found": status.HTTP_404_NOT_FOUND,
+    "order_not_found": status.HTTP_404_NOT_FOUND,
+    "actor_required": status.HTTP_400_BAD_REQUEST,
+}
 
 
 @router.get("/health")
@@ -198,6 +211,59 @@ async def governance_incidents(
         }
         for x in rows
     ]
+
+
+@router.get("/refunds/mine", response_model=list[RefundOut])
+async def my_refunds(
+    principal: Principal = Depends(get_principal), db: AsyncSession = Depends(get_db)
+):
+    """A customer only ever sees their own refund requests."""
+    return await list_refunds(db, user_id=principal.user_id)
+
+
+@router.get("/refunds", response_model=list[RefundOut])
+async def admin_list_refunds(
+    status_filter: str | None = Query(default=None, alias="status", max_length=40),
+    limit: int = Query(default=100, ge=1, le=500),
+    _: Principal = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_refunds(db, status=status_filter, limit=limit)
+
+
+@router.post("/refunds/{refund_id}/decision", response_model=RefundOut)
+async def decide_refund_route(
+    refund_id: str,
+    payload: RefundDecisionRequest,
+    principal: Principal = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve, reject or settle one refund; the requester can never decide their own."""
+    try:
+        refund, _transition = await decide_refund(
+            db,
+            refund_id=refund_id,
+            decision=payload.decision,
+            actor=principal.user_id,
+            reason=payload.reason,
+        )
+    except RefundApprovalError as error:
+        raise HTTPException(
+            status_code=_DECISION_STATUS.get(error.code, status.HTTP_409_CONFLICT),
+            detail={"code": error.code, "message": error.message},
+        ) from error
+    await db.commit()
+    await db.refresh(refund)
+    return refund
+
+
+@router.get("/refunds/{refund_id}/audit", response_model=list[RefundAuditOut])
+async def refund_audit(
+    refund_id: str,
+    _: Principal = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await audit_trail(db, refund_id)
 
 
 @router.websocket("/ws/monitor")

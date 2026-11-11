@@ -3,9 +3,11 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: sqlite+aiosqlite:///./data/omnicare.db
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:///./data/omnicare.db}
     ports:
-      - "8000:8000"
+      # Loopback only. AUTH_MODE=dev trusts X-User-Id, so this demo stack must never be
+      # reachable from the LAN. Anything public must use docker-compose.prod.yml (token auth).
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -15,7 +17,7 @@ services:
     image: n8nio/n8n:latest
     profiles: ["automation"]
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678"
     environment:
       N8N_HOST: localhost
       N8N_PORT: 5678
