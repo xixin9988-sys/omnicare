@@ -30,6 +30,7 @@ pytestmark = pytest.mark.skipif(not IS_POSTGRES, reason="requires PostgreSQL FOR
 async def seed_order(total: str = "100.00") -> None:
     async with SessionLocal() as db:
         db.add(User(id="alice", display_name="Alice"))
+        await db.flush()
         db.add(
             Order(
                 id="ORD-1",

@@ -18,6 +18,7 @@ from app.services.refunds import available_refund
 async def seed(db, *, total: str = "100.00", refunded: str = "0.00") -> None:
     db.add(User(id="alice", display_name="Alice"))
     db.add(User(id="admin-1", display_name="Admin"))
+    await db.flush()  # parents before children: PostgreSQL enforces the FK, SQLite does not
     db.add(
         Order(
             id="ORD-1",
