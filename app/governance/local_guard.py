@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.governance.ports import GuardDecision
 from app.models.entities import Order
-from app.services.refunds import available_refund
+from app.services.refunds import available_refund, lock_clause
 
 
 class LocalPolicyGuard:
@@ -68,9 +68,10 @@ class LocalPolicyGuard:
             return GuardDecision(False, "reject", "invalid_refund_amount", "退款金额格式不合法。")
         if requested <= 0:
             return GuardDecision(False, "reject", "invalid_refund_amount", "退款金额必须大于 0。")
-        order = await db.scalar(
-            select(Order).where(Order.id == order_id, Order.user_id == user_id).with_for_update()
-        )
+        order_stmt = select(Order).where(Order.id == order_id, Order.user_id == user_id)
+        if lock_clause(db):
+            order_stmt = order_stmt.with_for_update()
+        order = await db.scalar(order_stmt)
         if order is None:
             return GuardDecision(
                 False, "reject", "order_not_owned_or_missing", "订单不存在或不属于当前用户。"

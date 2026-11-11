@@ -17,6 +17,18 @@ from app.models.entities import RefundRequest
 OPEN_REFUND_STATUSES = ("pending_review", "approved")
 
 
+def supports_row_lock(db: Any) -> bool:
+    """SQLite ignores/forbids FOR UPDATE; PostgreSQL and MySQL support it."""
+    bind = getattr(db, "bind", None)
+    dialect = getattr(getattr(bind, "dialect", None), "name", "")
+    return bool(dialect) and dialect not in {"sqlite"}
+
+
+def lock_clause(db: Any) -> dict[str, bool]:
+    """``select(...).with_for_update(**lock_clause(db))`` is a no-op on SQLite."""
+    return {"nowait": False} if supports_row_lock(db) else {}
+
+
 async def open_refund_total(db: Any, order_id: str) -> Decimal:
     """Sum of refund requests that still consume the order's refundable balance."""
     total = await db.scalar(
@@ -36,4 +48,10 @@ async def available_refund(db: Any, order: Any) -> Decimal:
     return max(Decimal(0), total - refunded - pending)
 
 
-__all__ = ["OPEN_REFUND_STATUSES", "available_refund", "open_refund_total"]
+__all__ = [
+    "OPEN_REFUND_STATUSES",
+    "available_refund",
+    "lock_clause",
+    "open_refund_total",
+    "supports_row_lock",
+]

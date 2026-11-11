@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
 from app.models.entities import Order, Product, RefundRequest
-from app.services.refunds import available_refund, open_refund_total
+from app.services.refunds import available_refund, lock_clause, open_refund_total
 from app.tools.registry import Permission, ToolContext, ToolRegistry, ToolResult, ToolSpec
 
 
@@ -64,11 +64,10 @@ async def search_products(args: ProductSearchArgs, ctx: ToolContext) -> ToolResu
 
 async def request_refund(args: RefundArgs, ctx: ToolContext) -> ToolResult:
     # Lock the order so two concurrent requests cannot both pass the balance check.
-    order = await ctx.db.scalar(
-        select(Order)
-        .where(Order.id == args.order_id, Order.user_id == ctx.user_id)
-        .with_for_update()
-    )
+    order_stmt = select(Order).where(Order.id == args.order_id, Order.user_id == ctx.user_id)
+    if lock_clause(ctx.db):
+        order_stmt = order_stmt.with_for_update()
+    order = await ctx.db.scalar(order_stmt)
     if not order:
         return ToolResult(False, {}, "order_not_found", "没有找到属于你的订单。")
 
