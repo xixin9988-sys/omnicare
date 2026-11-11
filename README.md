@@ -88,7 +88,12 @@ LLM_MODEL=deepseek-flash
 - Metrics：`GET /api/v1/metrics/summary`
 - 事件历史：`GET /api/v1/events`
 - 治理事件：`GET /api/v1/governance/incidents`
-- MCP Server：`python -m app.mcp_server`，连接 `http://127.0.0.1:9000/mcp`。当前 MCP server 单独进程，仅提供只读查询示例；不要直接暴露退款写操作。
+- 退款审核：`GET /api/v1/refunds`（管理员，可按 `status` 过滤）、
+  `POST /api/v1/refunds/{id}/decision`（管理员，`{"decision": "approve|reject|settle"}`）、
+  `GET /api/v1/refunds/{id}/audit`（管理员，逐条审计）、`GET /api/v1/refunds/mine`（只返回自己的申请）
+- MCP Server：`python -m app.mcp_server`，连接 `http://127.0.0.1:9000/mcp`。`check_logistics`
+  的身份来自签名用户令牌（`user_token`），**不再接受 `user_id` 参数**；`MCP_AUTH_TOKEN` 只是网关级
+  传输认证，不能代替用户身份。不要直接暴露退款写操作。
 
 ## 7. Docker
 
@@ -97,7 +102,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
-API: `http://localhost:8000`
+API: `http://localhost:8000`（只绑定 `127.0.0.1`：演示用的 `AUTH_MODE=dev` 信任 `X-User-Id`，
+不能暴露到局域网）。
 
 需要 n8n 时：
 
@@ -107,21 +113,38 @@ docker compose --profile automation up --build
 
 n8n: `http://localhost:5678`。首次进入后创建工作流并把 Webhook URL 写入 `N8N_WEBHOOK_URL`，重新启动 API。
 
+生产形态（PostgreSQL + 签名令牌，缺少密钥直接拒绝启动）：
+
+```bash
+export AUTH_SECRET=$(python -c "import secrets;print(secrets.token_hex(32))")
+export ADMIN_API_KEY=$(python -c "import secrets;print(secrets.token_hex(24))")
+export MCP_AUTH_TOKEN=$(python -c "import secrets;print(secrets.token_hex(24))")
+export POSTGRES_PASSWORD=$(python -c "import secrets;print(secrets.token_hex(24))")
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
 ## 8. 测试
 
 ```bash
-pytest -q
-ruff check app tests
+# 无需数据库栈（本机即可跑）
+python -m pytest contract_tests -q
+# 需要 fastapi + sqlalchemy + aiosqlite（CI 的 full-suite job）
+python -m pytest tests -q
+ruff check .
+ruff format --check .
 ```
 
 ## 9. 当前限制 / 下一阶段
 
-1. `user_id` 是 demo 请求字段，不是身份认证。生产环境必须从 OIDC/JWT subject 获取用户身份，禁止信任客户端任意传值。
+1. 身份：`AUTH_MODE=token` 时由 HMAC 签名令牌给出 `user_id`；`AUTH_MODE=dev`（信任 `X-User-Id`）
+   只允许 local/dev/test，且默认 compose 只绑定 `127.0.0.1`。启动自检见 `app/core/preflight.py`。
+   仍缺 IdP、密钥轮换与吊销。
 2. 目前 WebSocket EventBroker 是单进程内存广播；多 worker / 多实例必须换 Redis Streams、NATS 或 Kafka，并保证事件顺序与幂等。
 3. Local memory adapter 仅做演示关键词匹配，不具备 NanoMemory 的 BM25/三元组/关系扩展能力。
 4. Local guard 仅覆盖示例策略；需对接真正 mem-guard 并增加规则版本、策略签名/证明、审计和污染基准测试。
-5. 当前 SQLite 适用于开发；生产改 PostgreSQL，并引入 Alembic migration、连接池和备份恢复验证。
-6. 退款只写入申请单，没有支付网关执行、审批人工作流或幂等回调。
+5. 当前 SQLite 适用于开发；生产改 PostgreSQL（CI 已用 PostgreSQL 16 跑并发退款测试），并引入 Alembic migration、连接池和备份恢复验证。
+6. 退款审批状态机已有（`pending_review → approved/rejected`，`approved → settled`，含审计与额度校验），
+   但**没有支付网关执行**：`settle` 只记账到 `orders.refunded_amount`，真正的打款回调仍是空缺。
 7. 3D Three.js 大屏、用户端 Vue/React、n8n 工作流配置模板尚未进入本轮后端 MVP。
 
 详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)、[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。

@@ -2,7 +2,18 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -52,11 +63,35 @@ class RefundRequest(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     reason: Mapped[str] = mapped_column(String(500), default="用户申请退款")
-    status: Mapped[str] = mapped_column(String(40), default="pending_review")
+    # pending_review -> approved | rejected, approved -> settled (see app.services.refund_state)
+    status: Mapped[str] = mapped_column(String(40), default="pending_review", index=True)
+    # Server-derived dedupe key (order + amount + reason); clients cannot choose it.
+    fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Retained for callers that still send a key; the server no longer requires one.
     idempotency_key: Mapped[str | None] = mapped_column(
         String(80), nullable=True, unique=True, index=True
     )
+    decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_reason: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class RefundAudit(Base):
+    """Append-only record of every refund transition (who, what, when, why)."""
+
+    __tablename__ = "refund_audit"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    refund_id: Mapped[str] = mapped_column(ForeignKey("refund_requests.id"), index=True)
+    order_id: Mapped[str] = mapped_column(String(64), index=True)
+    from_status: Mapped[str] = mapped_column(String(40))
+    to_status: Mapped[str] = mapped_column(String(40))
+    decision: Mapped[str] = mapped_column(String(40))
+    actor: Mapped[str] = mapped_column(String(64), index=True)
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, index=True
+    )
 
 
 class ConversationSession(Base):
@@ -123,3 +158,14 @@ class GovernanceIncident(Base):
 
 
 Index("ix_agent_events_created_type", AgentEvent.created_at, AgentEvent.event_type)
+
+# One open refund per (order, amount+reason): the database, not the application, wins races.
+# Partial indexes are supported by SQLite and PostgreSQL (the two supported backends).
+Index(
+    "uq_refund_open_fingerprint",
+    RefundRequest.order_id,
+    RefundRequest.fingerprint,
+    unique=True,
+    sqlite_where=text("status IN ('pending_review','approved')"),
+    postgresql_where=text("status IN ('pending_review','approved')"),
+)
