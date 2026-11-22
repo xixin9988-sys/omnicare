@@ -317,9 +317,9 @@ python -m http.server 8123 --directory web
 
 ## 目录收录
 
-在 [M8ven Trust Index](https://m8ven.ai/mcp/xixin9988-sys-omnicare-1ql9oj?s=readme) 上按代码、验证深度、声誉三项独立评分。
+在 [M8ven Trust Index](https://m8ven.ai/mcp/xixin9988-sys-omnicare-1ql9oj?s=readme) 上按代码、验证深度、声誉三项独立评分，发布者已通过认证。
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/xixin9988-sys-omnicare-1ql9oj?v=f8da3efda94ced386b1a046dff195c16)](https://m8ven.ai/mcp/xixin9988-sys-omnicare-1ql9oj?s=readme)
+[![M8ven Verified](https://m8ven.ai/badge/mcp/xixin9988-sys-omnicare-1ql9oj?v=f8da3efda94ced386b1a046dff195c16&variant=verified)](https://m8ven.ai/mcp/xixin9988-sys-omnicare-1ql9oj?s=readme)
 
 ## License
 
