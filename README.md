@@ -4,6 +4,25 @@
 >
 > **v0.2.0（2026-11-22）安全轮：** OIDC/JWT 身份核心、MCP 传输层认证与可信身份上下文（工具不再接收 token 参数）、记忆溯源审计链、NanoMemory provenance/user_id/session 契约对齐。细节见 [SECURITY_FIXES.md](SECURITY_FIXES.md) 的 S-01…S-06 与 [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md)。
 
+## 这是什么
+
+一个**电商售后场景的 MCP server**，以及跑通它所需的多智能体后端。
+
+| | |
+| --- | --- |
+| MCP 入口 | `python -m app.mcp_server` → `http://127.0.0.1:9000/mcp`（MCP v2 Streamable HTTP） |
+| 暴露的工具 | 2 个只读：`search_products(query)` 搜索在售商品、`check_logistics(order_id)` 查询物流 |
+| 身份 | 传输层 `Authorization: Bearer <JWT>`；工具参数里没有 token / user_id |
+| 治理 | 工具执行前校验订单归属、可退金额上限、状态机；退款只落 `pending_review` 等人工审批 |
+| 零密钥启动 | 默认 Mock LLM + SQLite + 本地 JSONL 记忆 + 确定性 local guard |
+
+```bash
+uvicorn app.main:app --port 8000   # 终端 1：API + 控制台 /ui/
+python -m app.mcp_server           # 终端 2：MCP server，监听 9000
+```
+
+工具清单、只读 annotations 与令牌校验细节见下文 §6「监控与 MCP」。
+
 ## 1. 功能范围
 
 - FastAPI 异步 API、会话、聊天消息和结构化业务数据。
