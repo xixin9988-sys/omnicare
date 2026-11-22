@@ -16,10 +16,12 @@ explicit, documented contract gap rather than a guess.
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 
 from app.core.config import Settings
-from app.memory.ports import MemoryRecord
+from app.memory.ports import MemoryRecord, normalize_provenance
 
 _TRUST_MAP = {
     "user_provided": "user_stated",
@@ -59,6 +61,7 @@ def _to_record(item: dict, full: dict | None = None) -> MemoryRecord:
         source=str(full.get("source") or item.get("source") or "nanomemory"),
         trust_level=_map_trust(full or item),
         state=str(item.get("status") or full.get("status") or "unknown").upper(),
+        provenance=normalize_provenance(full.get("provenance") or item.get("provenance")),
     )
 
 
@@ -76,20 +79,77 @@ class NanoMemoryHTTPAdapter:
         self.timeout = 8.0
         self.transport = transport
         self.last_request: dict | None = None
+        # NanoMemory sessions are server-generated (spec 24.3): the OmniCare session id is
+        # not a NanoMemory session id. Probe the deployment mode once, then either omit the
+        # header (single-session deployment) or create and cache a NanoMemory session per
+        # OmniCare conversation (multi-session deployment).
+        self._session_mode: str | None = None
+        self._nanomemory_sessions: dict[str, str] = {}
+        self._session_lock = asyncio.Lock()
 
-    def _headers(self, session_id: str) -> dict[str, str]:
-        headers = {"X-NanoMemory-Session-ID": session_id}
+    def _base_headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def _client(self, session_id: str) -> httpx.AsyncClient:
+    def _client(self, headers: dict[str, str]) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             base_url=self.base_url,
             timeout=self.timeout,
-            headers=self._headers(session_id),
+            headers=headers,
             transport=self.transport,
         )
+
+    async def _ensure_session_mode(self) -> str:
+        """Return "single" or "multi" for this NanoMemory deployment.
+
+        GET /api/v1/version is public. If the probe fails (older server or contract-test
+        transport), fall back to single-session behaviour: omitting the header is the safe
+        choice because NanoMemory uses its default session instead of rejecting an unknown id.
+        """
+        if self._session_mode is None:
+            async with self._session_lock:
+                if self._session_mode is None:
+                    mode = "single"
+                    try:
+                        async with self._client(self._base_headers()) as client:
+                            response = await client.get("/api/v1/version")
+                        if response.status_code == 200:
+                            candidate = str(response.json().get("session_mode") or "").lower()
+                            if candidate in {"single", "multi"}:
+                                mode = candidate
+                    except (httpx.HTTPError, ValueError):
+                        mode = "single"
+                    self._session_mode = mode
+        return self._session_mode
+
+    async def _session_headers(self, session_id: str) -> dict[str, str]:
+        if await self._ensure_session_mode() == "single":
+            return {}
+        cached = self._nanomemory_sessions.get(session_id)
+        if cached:
+            return {"X-NanoMemory-Session-ID": cached}
+        async with self._session_lock:
+            cached = self._nanomemory_sessions.get(session_id)
+            if cached:
+                return {"X-NanoMemory-Session-ID": cached}
+            async with self._client(self._base_headers()) as client:
+                response = await client.post("/api/v1/sessions")
+                response.raise_for_status()
+                created = str(response.json().get("session_id") or "")
+            if not created:
+                raise RuntimeError("NanoMemory did not return a session id")
+            self._nanomemory_sessions[session_id] = created
+            return {"X-NanoMemory-Session-ID": created}
+
+    async def _request_headers(self, session_id: str) -> dict[str, str]:
+        headers = self._base_headers()
+        headers.update(await self._session_headers(session_id))
+        return headers
+
+    async def _open(self, session_id: str) -> httpx.AsyncClient:
+        return self._client(await self._request_headers(session_id))
 
     @staticmethod
     async def _records(client: httpx.AsyncClient, limit: int = 500) -> dict[str, dict]:
@@ -101,7 +161,7 @@ class NanoMemoryHTTPAdapter:
     async def retrieve(
         self, *, user_id: str, session_id: str, query: str, limit: int = 6
     ) -> list[MemoryRecord]:
-        async with self._client(session_id) as client:
+        async with await self._open(session_id) as client:
             response = await client.get(
                 "/api/v1/memory/recall",
                 params={"q": query, "limit": limit, "user_id": user_id},
@@ -113,17 +173,35 @@ class NanoMemoryHTTPAdapter:
         return [_to_record(item, records.get(str(item.get("id")))) for item in items][:limit]
 
     async def remember_preference(
-        self, *, user_id: str, session_id: str, content: str, source: str
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        content: str,
+        source: str,
+        source_ref: str = "",
+        created_by: str = "omnicare",
     ) -> MemoryRecord:
-        body = {
+        # The provenance object is the server-side half of the audit chain: source_kind says
+        # the bytes came from a user turn, source_ref points at the OmniCare session/run.
+        body: dict = {
             "content": content,
             "category": "preference",
             "source": source,
             "source_type": "user",
+            "user_id": user_id,
             "tags": ["omnicare", "preference"],
         }
+        # Only send provenance when a source reference exists: that keeps the adapter
+        # compatible with deployments whose create DTO predates the provenance field.
+        if source_ref:
+            body["provenance"] = {
+                "source_kind": "user",
+                "source_ref": source_ref,
+                "created_by": created_by,
+            }
         self.last_request = dict(body)
-        async with self._client(session_id) as client:
+        async with await self._open(session_id) as client:
             response = await client.post("/api/v1/memory/long-term", json=body)
             response.raise_for_status()
             created = response.json()

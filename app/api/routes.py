@@ -41,6 +41,12 @@ from app.models.entities import (
 )
 from app.schemas.chat import ChatRequest, ChatResponse, ProductOut, SessionCreate
 from app.schemas.refunds import RefundAuditOut, RefundDecisionRequest, RefundOut
+from app.services.memory_provenance import (
+    get_memory_provenance,
+    resolve_attestation_secret,
+    serialize_memory_provenance,
+    verify_provenance_row,
+)
 from app.services.refund_approval import (
     RefundApprovalError,
     audit_trail,
@@ -117,6 +123,7 @@ async def chat(
         )
     return await supervisor.run(
         user_id=principal.user_id,
+        tenant_id=principal.tenant_id,
         session_id=payload.session_id,
         message=payload.message,
         db=db,
@@ -211,6 +218,31 @@ async def governance_incidents(
         }
         for x in rows
     ]
+
+
+@router.get("/memories/{memory_id}/provenance")
+async def memory_provenance(
+    memory_id: str,
+    _: Principal = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin audit view of the attestation row behind one memory.
+
+    The digest itself is not exposed; ``verified`` says whether the stored row is intact.
+    """
+    row = await get_memory_provenance(db, memory_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "memory_provenance_not_found",
+                "message": "No provenance row exists for this memory.",
+            },
+        )
+    verified, _reason = verify_provenance_row(
+        row=row, secret=resolve_attestation_secret(get_settings())
+    )
+    return serialize_memory_provenance(row, verified=verified)
 
 
 @router.get("/refunds/mine", response_model=list[RefundOut])

@@ -18,11 +18,26 @@ class LocalPolicyGuard:
         state = (getattr(memory, "state", "unknown") or "unknown").upper()
         source = getattr(memory, "source", "unknown") or "unknown"
         trust = (getattr(memory, "trust_level", "unknown") or "unknown").lower()
+        provenance = getattr(memory, "provenance", None)
         if state in {"CONFLICT", "QUARANTINED", "SUPERSEDED", "ARCHIVED"}:
             return GuardDecision(False, "quarantine", "memory_state_not_active", state)
         if source == "unknown" or trust == "unknown":
             return GuardDecision(
                 False, "quarantine", "memory_provenance_missing", "来源或信任等级缺失"
+            )
+        # A user-stated memory without the source_ref that an attestation can bind to is not
+        # auditable. Objects that do not model provenance at all (legacy adapters/fixtures) keep
+        # the previous behavior; every production MemoryRecord carries the dict.
+        if (
+            isinstance(provenance, dict)
+            and trust in {"user_stated", "user_verified", "user_asserted"}
+            and not provenance.get("source_ref")
+        ):
+            return GuardDecision(
+                False,
+                "quarantine",
+                "memory_provenance_missing",
+                "用户来源记忆缺少可审计的 source_ref",
             )
         return GuardDecision(True, "allow", "memory_accepted")
 
