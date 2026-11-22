@@ -315,6 +315,12 @@ python -m http.server 8123 --directory web
 # open http://127.0.0.1:8123/
 ```
 
+## 目录收录
+
+在 [M8ven Trust Index](https://m8ven.ai/mcp/xixin9988-sys-omnicare-1ql9oj?s=readme) 上按代码、验证深度、声誉三项独立评分。
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/xixin9988-sys-omnicare-1ql9oj?v=f8da3efda94ced386b1a046dff195c16)](https://m8ven.ai/mcp/xixin9988-sys-omnicare-1ql9oj?s=readme)
+
 ## License
 
 MIT — see [LICENSE](LICENSE). The open-core boundary (what stays private) is documented
