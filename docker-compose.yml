@@ -6,7 +6,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:///./data/omnicare.db}
     ports:
       # Loopback only. AUTH_MODE=dev trusts X-User-Id, so this demo stack must never be
-      # reachable from the LAN. Anything public must use docker-compose.prod.yml (token auth).
+      # reachable from the LAN. Anything public must use docker-compose.prod.yml (JWT/OIDC auth).
       - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data

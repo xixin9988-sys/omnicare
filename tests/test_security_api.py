@@ -52,3 +52,15 @@ async def test_admin_endpoints_require_admin(client: AsyncClient) -> None:
         response = await client.get(path, headers={"X-User-Id": "demo_user_001"})
         assert response.status_code == 403, path
         assert response.json()["detail"]["code"] == "admin_required"
+
+
+@pytest.mark.asyncio
+async def test_identity_optional_body_and_root_health_alias(client: AsyncClient) -> None:
+    # The token/header is the identity source; the body user_id is only an optional echo.
+    created = await client.post("/api/v1/sessions", json={}, headers={"X-User-Id": "demo_user_001"})
+    assert created.status_code == 201
+    assert created.json()["user_id"] == "demo_user_001"
+
+    health = await client.get("/health")
+    assert health.status_code == 200
+    assert health.json()["status"] == "ok"
