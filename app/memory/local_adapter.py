@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from uuid import uuid4
 
-from app.memory.ports import MemoryRecord
+from app.memory.ports import MemoryRecord, normalize_provenance
 
 
 class LocalFileMemoryAdapter:
@@ -50,6 +50,7 @@ class LocalFileMemoryAdapter:
                                 source=str(item.get("source", "unknown")),
                                 trust_level=str(item.get("trust_level", "unknown")),
                                 state=str(item.get("state", "ACTIVE")),
+                                provenance=normalize_provenance(item.get("provenance")),
                             ),
                         )
                     )
@@ -60,8 +61,16 @@ class LocalFileMemoryAdapter:
         return [record for _, record in found[:limit]]
 
     async def remember_preference(
-        self, *, user_id: str, session_id: str, content: str, source: str
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        content: str,
+        source: str,
+        source_ref: str = "",
+        created_by: str = "omnicare",
     ) -> MemoryRecord:
+        provenance = {"source_kind": "user", "source_ref": source_ref, "created_by": created_by}
         record = MemoryRecord(
             id=str(uuid4()),
             content=content,
@@ -69,6 +78,7 @@ class LocalFileMemoryAdapter:
             source=source,
             trust_level="user_asserted",
             state="ACTIVE",
+            provenance=dict(provenance),
         )
         payload = {
             "id": record.id,
@@ -78,6 +88,7 @@ class LocalFileMemoryAdapter:
             "source": source,
             "trust_level": record.trust_level,
             "state": record.state,
+            "provenance": provenance,
         }
         async with self._lock:
             with self._path(user_id).open("a", encoding="utf-8") as file:

@@ -86,8 +86,22 @@ class MemGuardAdapter:
     def validate_memory(self, memory: Any) -> GuardDecision:
         state = str(getattr(memory, "state", "unknown") or "unknown").upper()
         trust = _trust(str(getattr(memory, "trust_level", "unknown") or "unknown"))
+        provenance = getattr(memory, "provenance", None)
         if state != "ACTIVE":
             return GuardDecision(False, "quarantine", "memory_state_not_active", state)
+        # User-stated/user-verified memory must carry the source_ref an attestation binds to.
+        # Objects without a provenance attribute (legacy adapters/fixtures) keep old behavior.
+        if (
+            isinstance(provenance, dict)
+            and trust in {"user_stated", "user_verified"}
+            and not provenance.get("source_ref")
+        ):
+            return GuardDecision(
+                False,
+                "quarantine",
+                "memory_provenance_missing",
+                "user-stated memory has no source_ref to attest",
+            )
         if trust_rank(TrustLevel(trust)) < trust_rank(TrustLevel.USER_STATED):
             return GuardDecision(False, "quarantine", "memory_trust_below_user_stated", trust)
         return GuardDecision(True, "allow", "memory_accepted")

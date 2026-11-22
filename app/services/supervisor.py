@@ -11,11 +11,16 @@ from app.agents.router import Intent, IntentRouter
 from app.agents.shopping import ShoppingAgent
 from app.core.config import Settings
 from app.core.events import broker
-from app.governance.ports import GovernancePort
+from app.governance.ports import GovernancePort, GuardDecision
 from app.integrations.n8n import N8NClient
 from app.memory.ports import MemoryPort
 from app.models.entities import AgentEvent, AgentRun, ChatMessage, GovernanceIncident
 from app.providers.base import LLMProvider
+from app.services.memory_provenance import (
+    record_memory_provenance,
+    resolve_attestation_secret,
+    verify_memory_provenance,
+)
 from app.tools.registry import ToolContext, ToolRegistry
 
 SYSTEM_PROMPT = (
@@ -36,6 +41,9 @@ class AgentSupervisor:
         n8n: N8NClient,
     ) -> None:
         self.settings = settings
+        self.memory_backend = settings.memory_backend.lower()
+        # HMAC key for memory attestations; never logged and never put in an event payload.
+        self.attestation_secret = resolve_attestation_secret(settings)
         self.provider = provider
         self.memory = memory
         self.governance = governance
@@ -80,7 +88,15 @@ class AgentSupervisor:
         )
         await broker.publish(event)
 
-    async def run(self, *, user_id: str, session_id: str, message: str, db: AsyncSession) -> dict:
+    async def run(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        message: str,
+        db: AsyncSession,
+        tenant_id: str = "default",
+    ) -> dict:
         started = time.perf_counter()
         run_id = str(uuid4())
         run = AgentRun(
@@ -140,6 +156,25 @@ class AgentSupervisor:
         )
         trusted_memories = []
         for memory in memories:
+            # Read-side half of the provenance chain: a memory without a matching, untampered
+            # attestation row is quarantined before the governance trust check even runs.
+            attested, attestation_reason = await verify_memory_provenance(
+                db, memory=memory, secret=self.attestation_secret
+            )
+            if not attested:
+                await self._record_incident(
+                    db,
+                    run_id,
+                    user_id,
+                    "memory",
+                    GuardDecision(
+                        False,
+                        "quarantine",
+                        "memory_provenance_unverified",
+                        f"{memory.id}: {attestation_reason}",
+                    ),
+                )
+                continue
             decision = self.governance.validate_memory(memory)
             if decision.allowed:
                 trusted_memories.append(memory)
@@ -270,11 +305,27 @@ class AgentSupervisor:
         # Record preference-like statements only after explicit phrasing; this is not broad auto-learning.
         preference_match = re.search(r"(?:以后|之后|今后).{0,10}(不要|别用|优先).{0,18}", message)
         if preference_match:
+            # The source_ref is the stable pointer the audit trail starts from; it names the
+            # exact conversation turn but carries no secret material.
+            source_ref = f"omnicare://sessions/{session_id}/runs/{run_id}"
             record = await self.memory.remember_preference(
                 user_id=user_id,
                 session_id=session_id,
                 content=preference_match.group(0).strip(),
                 source="user_explicit_statement",
+                source_ref=source_ref,
+                created_by="omnicare",
+            )
+            # Same transaction as the run: a committed memory always has its attestation row.
+            await record_memory_provenance(
+                db,
+                memory=record,
+                user_id=user_id,
+                session_id=session_id,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                backend=self.memory_backend,
+                secret=self.attestation_secret,
             )
             await self._emit(
                 db,
@@ -283,7 +334,12 @@ class AgentSupervisor:
                 event_type="memory_written",
                 agent="nanomemory",
                 status="completed",
-                payload={"memory_id": record.id, "memory_type": record.memory_type},
+                payload={
+                    "memory_id": record.id,
+                    "memory_type": record.memory_type,
+                    "source_ref": source_ref,
+                    "backend": self.memory_backend,
+                },
             )
 
         return await self._finish(db, run, session_id, reply, "completed", route.agent, started)

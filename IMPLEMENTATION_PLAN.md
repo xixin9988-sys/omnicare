@@ -37,7 +37,7 @@ omnicare/
 │   └── mcp_server.py
 ├── data/                    # local SQLite + demo memory (gitignored)
 ├── docs/
-├── frontend/admin/          # reserved for Three.js dashboard phase
+├── web/                     # static Synthelix console (HTML/CSS/JS, no build step)
 ├── tests/
 ├── ARCHITECTURE.md
 ├── IMPLEMENTATION_PLAN.md
@@ -66,7 +66,7 @@ omnicare/
 | n8n | `app/integrations/n8n.py` | mocked webhook test to add | Client implemented; external workflow NOT VERIFIED |
 | MCP | `app/mcp_server.py` | MCP Inspector integration test required | Code implemented; runtime NOT VERIFIED in this environment |
 | Docker | `Dockerfile`, `docker-compose.yml` | `docker compose build/up` | NOT VERIFIED in this environment |
-| Three.js UI | `frontend/admin/` | future browser test | NOT IMPLEMENTED |
+| Web 控制台 | `web/index.html`, `web/css/style.css`, `web/js/app.js` | `contract_tests/test_ui_assets.py` + Edge 截图 | Implemented（无构建、无 Three.js）；浏览器交互 E2E 待补 |
 
 ## 4. 下一阶段分解
 
@@ -109,7 +109,8 @@ omnicare/
 
 - [ ] 用户聊天 UI：流式消息、会话历史、Agent/Tool 状态。
 - [ ] 管理后台 RBAC、策略配置审批和审计。
-- [ ] Three.js Agent 节点场景；WebSocket event replay。
+- [x] 极简 Web 控制台（实时事件流 + KPI + 治理状态，Synthelix 白）。
+- [ ] 事件回放、图表与用户端聊天 UI。
 - [ ] 图表：请求量、P50/P95、Token、exact/estimated 结构、阻断数、工具失败数。
 - [ ] Playwright E2E + 录屏脚本。
 
@@ -124,3 +125,20 @@ omnicare/
 ## 5. 本轮执行状态
 
 代码骨架和文档已生成。本轮环境不保证具备项目全部 Python 依赖、Docker daemon 或 NanoMemory/mem-guard 实际部署，因此没有将安装、容器构建、真实 SDK 连接或运行测试预先标为 VERIFIED。应在本地按 README 执行，并将真实命令输出保存到 `reports/`。
+
+## 6. 0.2.0 安全轮完成情况（2026-11-22）
+
+本轮对应外部评审的 P0/P1：身份、MCP 认证、记忆溯源、NanoMemory 契约、部署配置。
+
+- [x] OIDC/JWT 身份核心：`app/core/jwt.py`（算法固定、HS*/RS/ES、JWKS、iss/aud、租户白名单、
+  jti 撤销、scope），生产启动自检拒绝 `dev`/legacy `token`。
+- [x] MCP 传输层认证与可信身份上下文：`app/mcp_token.py` + `app/mcp_auth.py`；工具不再接收
+  token/user_id 参数；只读 annotations 上线。
+- [x] 记忆溯源审计链：`app/services/attestation.py` + `app/services/memory_provenance.py`，
+  写入同事务 attestation、检索前校验、管理员溯源接口。
+- [x] NanoMemory 0.2.1 契约：`provenance` / `user_id` 写入，单/多 session 协商。
+- [x] HTTP 表面：body `user_id` 可选断言，`/health` 别名，生产 compose 改 JWT/OIDC。
+- [x] 验收：真实 MCP server（15/15）、真实 HTTP API（13/13）、真实 NanoMemory + adapter，
+  contract 129 / tests 43 / NanoMemory 293 / mem-guard 33；详见 `VERIFICATION_REPORT.md`。
+- [ ] 仍待：PostgreSQL 行锁本地/CI 证据、Docker 实跑、真实 IdP 对接、支付结算、Alembic、
+  多租户数据列隔离、分布式事件总线。

@@ -1,350 +1,297 @@
-﻿import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+/* OmniCare console — Synthelix edition.
+   A dependency-free, white-canvas event console. The WebSocket stream comes from
+   /api/v1/ws/monitor; when the socket is unavailable (static preview, JWT mode without an
+   admin token, network hiccup) the page falls back to a clearly labelled demo stream. */
 
-const canvas = document.getElementById("scene");
-const statusEl = document.getElementById("status");
-const streamEl = document.getElementById("stream");
-const counters = {
-  events: document.getElementById("stat-events"),
-  memory: document.getElementById("stat-memory"),
+const ENDPOINT = "/api/v1/ws/monitor";
+const MAX_ROWS = 40;
+
+const els = {
+  conn: document.getElementById("conn"),
+  connText: document.getElementById("conn-text"),
+  stream: document.getElementById("stream"),
+  meta: document.getElementById("stream-meta"),
+  empty: document.getElementById("stream-empty"),
+  runs: document.getElementById("stat-runs"),
   blocked: document.getElementById("stat-blocked"),
-  refund: document.getElementById("stat-refund"),
+  memory: document.getElementById("stat-memory"),
+  tools: document.getElementById("stat-tools"),
+  tokens: document.getElementById("stat-tokens"),
 };
 
-const AGENTS = [
-  { id: "supervisor", label: "Supervisor", angle: 0 },
-  { id: "logistics", label: "Logistics", angle: Math.PI / 2 },
-  { id: "aftersales", label: "AfterSales", angle: Math.PI },
-  { id: "shopping", label: "Shopping", angle: (3 * Math.PI) / 2 },
-];
-const COLORS = {
-  agent: 0x46e0ff,
-  memory: 0x9d7bff,
-  blocked: 0xff6b7a,
-  tool: 0xffc663,
+const counters = { events: 0, runs: 0, blocked: 0, memory: 0, tools: 0, tokens: 0 };
+
+const EVENT_LABELS = {
+  request_received: "请求进入",
+  route_selected: "路由选择",
+  agent_started: "Agent 启动",
+  memory_retrieval_started: "记忆检索",
+  memory_retrieved: "记忆命中",
+  memory_written: "记忆写入",
+  tool_started: "工具调用",
+  tool_completed: "工具完成",
+  tool_denied: "工具拦截",
+  tool_failed: "工具失败",
+  governance_blocked: "治理阻断",
+  output_quarantined: "输出隔离",
+  refund_pending_review: "退款待审",
+  run_completed: "运行完成",
 };
 
-const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x05070f, 0.021);
+const BLOCKED_TYPES = new Set([
+  "governance_blocked",
+  "tool_denied",
+  "output_quarantined",
+  "input_governed",
+]);
 
-const camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.1, 200);
-function fitCamera() {
-  const aspect = innerWidth / Math.max(1, innerHeight);
-  const distance = aspect < 1.15 ? 23 : aspect < 1.4 ? 19 : 16;
-  camera.position.set(0, distance * 0.47, distance);
-  camera.lookAt(0, 0, 0);
-}
-fitCamera();
-
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
-
-scene.add(new THREE.AmbientLight(0x6f8cff, 0.55));
-const key = new THREE.PointLight(0x46e0ff, 90, 60);
-key.position.set(9, 11, 8);
-scene.add(key);
-const rim = new THREE.PointLight(0x9d7bff, 70, 60);
-rim.position.set(-10, -6, -8);
-scene.add(rim);
-const warm = new THREE.PointLight(0xffc663, 26, 40);
-warm.position.set(0, 2, 9);
-scene.add(warm);
-
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.06;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.35;
-controls.minDistance = 7;
-controls.maxDistance = 34;
-controls.maxPolarAngle = Math.PI * 0.86;
-
-const world = new THREE.Group();
-scene.add(world);
-
-// ---------------------------------------------------------------- core
-const coreGeo = new THREE.IcosahedronGeometry(1.7, 2);
-const coreMat = new THREE.MeshStandardMaterial({
-  color: 0x1a1440,
-  emissive: 0x6a4bff,
-  emissiveIntensity: 1.25,
-  metalness: 0.35,
-  roughness: 0.35,
-  flatShading: true,
-});
-const core = new THREE.Mesh(coreGeo, coreMat);
-world.add(core);
-
-const shell = new THREE.Mesh(
-  new THREE.IcosahedronGeometry(2.15, 1),
-  new THREE.MeshBasicMaterial({ color: COLORS.memory, wireframe: true, transparent: true, opacity: 0.22 }),
-);
-world.add(shell);
-
-// ---------------------------------------------------------------- governance ring
-const gate = new THREE.Mesh(
-  new THREE.TorusGeometry(3.5, 0.09, 12, 160),
-  new THREE.MeshStandardMaterial({
-    color: 0x2a1c08,
-    emissive: COLORS.tool,
-    emissiveIntensity: 1.5,
-    metalness: 0.5,
-    roughness: 0.3,
-  }),
-);
-gate.rotation.x = Math.PI / 2.35;
-world.add(gate);
-
-// ---------------------------------------------------------------- agents
-const agentGroup = new THREE.Group();
-world.add(agentGroup);
-const nodes = [];
-const RING = 7.4;
-
-AGENTS.forEach((agent, index) => {
-  const angle = agent.angle;
-  const position = new THREE.Vector3(Math.cos(angle) * RING, Math.sin(index % 2 === 0 ? 0.9 : -0.9), Math.sin(angle) * RING);
-
-  const mesh = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.62, 0),
-    new THREE.MeshStandardMaterial({
-      color: 0x071a22,
-      emissive: COLORS.agent,
-      emissiveIntensity: 1.1,
-      metalness: 0.4,
-      roughness: 0.3,
-    }),
-  );
-  mesh.position.copy(position);
-  agentGroup.add(mesh);
-
-  const halo = new THREE.Mesh(
-    new THREE.RingGeometry(0.9, 0.98, 64),
-    new THREE.MeshBasicMaterial({ color: COLORS.agent, transparent: true, opacity: 0.18, side: THREE.DoubleSide }),
-  );
-  halo.position.copy(position);
-  halo.lookAt(0, position.y, 0);
-  agentGroup.add(halo);
-
-  const sprite = makeLabel(agent.label, "#9fe9ff");
-  sprite.position.copy(position).add(new THREE.Vector3(0, 1.15, 0));
-  agentGroup.add(sprite);
-
-  const line = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([position, new THREE.Vector3(0, 0, 0)]),
-    new THREE.LineBasicMaterial({ color: 0x3a4f7a, transparent: true, opacity: 0.35 }),
-  );
-  world.add(line);
-
-  nodes.push({ ...agent, position, mesh, halo, index });
-});
-
-// ---------------------------------------------------------------- particles
-const PARTICLES = 140;
-const particles = [];
-const particleGeometry = new THREE.SphereGeometry(0.075, 8, 8);
-for (let i = 0; i < PARTICLES; i += 1) {
-  const mesh = new THREE.Mesh(
-    particleGeometry,
-    new THREE.MeshBasicMaterial({ color: COLORS.agent, transparent: true, opacity: 0 }),
-  );
-  world.add(mesh);
-  particles.push({ mesh, active: false, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), speed: 0.02, color: COLORS.agent });
+function labelFor(type) {
+  return EVENT_LABELS[type] || type.replaceAll("_", " ");
 }
 
-function spawn(kind) {
-  const particle = particles.find((p) => !p.active);
-  if (!particle) return;
-  const node = nodes[Math.floor(Math.random() * nodes.length)];
-  particle.active = true;
-  particle.t = 0;
-  particle.from.copy(node.position);
-  particle.color = COLORS[kind] ?? COLORS.agent;
-  particle.mesh.material.color.setHex(particle.color);
-  particle.mesh.material.opacity = 0.95;
-  particle.speed = 0.012 + Math.random() * 0.012;
-
-  if (kind === "memory") {
-    particle.to.set(0, 0, 0);
-  } else if (kind === "blocked") {
-    const angle = Math.random() * Math.PI * 2;
-    particle.to.set(Math.cos(angle) * 3.5, Math.sin(angle) * 1.2, Math.sin(angle) * 3.5);
-  } else if (kind === "tool") {
-    particle.to.copy(node.position).multiplyScalar(0.55).add(new THREE.Vector3(0, 1.4, 0));
-  } else {
-    particle.to.set(0, 1.9, 0);
-  }
-  particle.mesh.position.copy(particle.from);
+function kindFor(type, status) {
+  if (BLOCKED_TYPES.has(type) || String(status || "").toLowerCase() === "blocked") return "blocked";
+  if (type.includes("memory")) return "memory";
+  if (type.includes("tool") || type.includes("refund")) return "tool";
+  return "system";
 }
 
-// ---------------------------------------------------------------- labels
-function makeLabel(text, color) {
-  const canvasEl = document.createElement("canvas");
-  canvasEl.width = 512;
-  canvasEl.height = 128;
-  const ctx = canvasEl.getContext("2d");
-  ctx.font = "600 46px Inter, Segoe UI, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 18;
-  ctx.fillStyle = color;
-  ctx.fillText(text, 256, 66);
-  const texture = new THREE.CanvasTexture(canvasEl);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(3.4, 0.85, 1);
-  return sprite;
+const DOT_CLASS = {
+  system: "dot-ink",
+  memory: "dot-violet",
+  tool: "dot-brown",
+  blocked: "dot-red",
+};
+
+function statusFor(kind, status) {
+  const normalised = String(status || "").toLowerCase();
+  if (kind === "blocked") return { text: "已阻断", value: "blocked" };
+  if (normalised === "completed") return { text: "完成", value: "ok" };
+  if (normalised === "running") return { text: "进行中", value: "running" };
+  if (normalised === "failed") return { text: "失败", value: "blocked" };
+  return { text: "记录", value: "info" };
 }
 
-// ---------------------------------------------------------------- HUD
-const state = { events: 0, memory: 0, blocked: 0, refund: 0 };
-
-function updateHud(kind, text) {
-  state.events += 1;
-  if (kind === "memory") state.memory += 1;
-  if (kind === "blocked") state.blocked += 1;
-  if (kind === "tool" && /refund/i.test(text)) state.refund += 1;
-  counters.events.textContent = state.events;
-  counters.memory.textContent = state.memory;
-  counters.blocked.textContent = state.blocked;
-  counters.refund.textContent = state.refund;
-
-  const li = document.createElement("li");
-  li.dataset.kind = kind;
-  li.textContent = text;
-  streamEl.prepend(li);
-  while (streamEl.children.length > 6) streamEl.lastElementChild.remove();
-}
-
-function setStatus(mode, text) {
-  statusEl.dataset.state = mode;
-  statusEl.textContent = text;
-}
-
-function normalise(event) {
-  const type = String(event.event_type || event.type || "agent_event").toLowerCase();
-  const agent = String(event.agent || "supervisor");
+function detailFor(event) {
   const payload = event.payload || {};
-  if (type.includes("govern") || type.includes("block") || String(event.status).toLowerCase() === "blocked") {
-    return { kind: "blocked", text: `⛔ ${agent} · ${payload.reason_code || type}` };
+  const parts = [];
+  if (payload.intent) parts.push("意图 " + payload.intent);
+  if (payload.tool) parts.push("工具 " + payload.tool);
+  if (payload.reason_code) parts.push(String(payload.reason_code));
+  if (payload.memory_type) parts.push(String(payload.memory_type));
+  if (typeof payload.accepted === "number") parts.push("接受 " + payload.accepted + " 条");
+  if (typeof payload.count === "number") parts.push(payload.count + " 条记忆");
+  if (payload.amount) parts.push("¥" + payload.amount);
+  if (typeof payload.total_tokens === "number") parts.push(payload.total_tokens + " tokens");
+  if (typeof payload.latency_ms === "number") parts.push(payload.latency_ms + " ms");
+  return parts.join(" · ");
+}
+
+function timeFor(event) {
+  const raw = event.created_at || event.time;
+  const moment = raw ? new Date(raw) : new Date();
+  const date = Number.isNaN(moment.getTime()) ? new Date() : moment;
+  return date.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function bump(counter, amount) {
+  counters[counter] += amount;
+  const el = els[counter];
+  if (el) el.textContent = counter === "tokens" ? counters.tokens.toLocaleString("en-US") : String(counters[counter]);
+}
+
+function account(event, kind) {
+  const type = String(event.event_type || event.type || "").toLowerCase();
+  if (type === "run_completed") {
+    bump("runs", 1);
+    const tokens = Number((event.payload || {}).total_tokens || 0);
+    if (Number.isFinite(tokens) && tokens > 0) bump("tokens", Math.round(tokens));
   }
-  if (type.includes("memory")) {
-    return { kind: "memory", text: `🧠 ${payload.count ?? "?"} memories · ${agent}` };
+  if (kind === "blocked") bump("blocked", 1);
+  if (kind === "memory" && ["memory_retrieved", "memory_written"].includes(type)) bump("memory", 1);
+  if (kind === "tool" && type === "tool_started") bump("tools", 1);
+}
+
+function renderRow(event) {
+  const type = String(event.event_type || event.type || "agent_event").toLowerCase();
+  const kind = kindFor(type, event.status);
+  const status = statusFor(kind, event.status);
+  const agent = String(event.agent || event.agent_name || "supervisor");
+  const detail = detailFor(event);
+
+  const row = document.createElement("li");
+  row.className = "stream-row";
+
+  const time = document.createElement("span");
+  time.className = "stream-time";
+  time.textContent = timeFor(event);
+
+  const dot = document.createElement("span");
+  dot.className = "dot " + (DOT_CLASS[kind] || "dot-ink");
+  dot.setAttribute("aria-hidden", "true");
+
+  const body = document.createElement("div");
+  body.className = "stream-body";
+
+  const title = document.createElement("p");
+  title.className = "stream-title";
+  title.textContent = labelFor(type) + " · " + agent;
+
+  const detailEl = document.createElement("p");
+  detailEl.className = "stream-detail";
+  detailEl.textContent = detail || "事件已记录";
+
+  body.append(title, detailEl);
+
+  const state = document.createElement("span");
+  state.className = "stream-state";
+  state.dataset.status = status.value;
+  state.textContent = status.text;
+
+  row.append(time, dot, body, state);
+
+  els.stream.prepend(row);
+  while (els.stream.children.length > MAX_ROWS) {
+    els.stream.lastElementChild.remove();
   }
-  if (type.includes("tool")) {
-    return { kind: "tool", text: `🛠 ${payload.tool || payload.name || type} · ${agent}` };
+
+  counters.events += 1;
+  if (els.empty) els.empty.hidden = true;
+  if (els.meta) {
+    els.meta.textContent = "最后一条 " + timeFor(event) + " · " + counters.events + " 条";
   }
-  if (type.includes("refund")) {
-    return { kind: "tool", text: `💸 pending_review · ${agent}` };
-  }
-  return { kind: "agent", text: `→ ${agent} · ${type}` };
 }
 
 function handleEvent(event) {
-  const { kind, text } = normalise(event);
-  spawn(kind);
-  updateHud(kind, text);
+  if (!event || typeof event !== "object") return;
+  const type = String(event.event_type || event.type || "").toLowerCase();
+  const kind = kindFor(type, event.status);
+  account(event, kind);
+  renderRow(event);
 }
 
-// ---------------------------------------------------------------- input
+function setConn(state, text) {
+  if (!els.conn) return;
+  els.conn.dataset.state = state;
+  if (els.connText) els.connText.textContent = text;
+}
+
+/* ------------------------------------------------------------------ demo */
 const DEMO_EVENTS = [
-  { event_type: "intent_routed", agent: "supervisor", payload: { intent: "logistics" } },
-  { event_type: "memory_retrieved", agent: "logistics", payload: { count: 3 } },
-  { event_type: "tool_called", agent: "logistics", payload: { tool: "query_order" } },
-  { event_type: "governance_blocked", agent: "aftersales", payload: { reason_code: "refund_exceeds_authoritative_limit" } },
-  { event_type: "refund_pending_review", agent: "aftersales", payload: { amount: 399 } },
-  { event_type: "memory_retrieved", agent: "shopping", payload: { count: 2 } },
+  {
+    event_type: "request_received",
+    agent: "supervisor",
+    status: "running",
+    payload: { message_chars: 32 },
+  },
+  {
+    event_type: "route_selected",
+    agent: "supervisor",
+    status: "completed",
+    payload: { intent: "logistics", target_agent: "logistics_agent" },
+  },
+  {
+    event_type: "memory_retrieved",
+    agent: "nanomemory",
+    status: "completed",
+    payload: { accepted: 3, rejected: 1 },
+  },
+  {
+    event_type: "tool_started",
+    agent: "logistics",
+    status: "running",
+    payload: { tool: "get_logistics" },
+  },
+  {
+    event_type: "tool_completed",
+    agent: "logistics",
+    status: "completed",
+    payload: { tool: "get_logistics", latency_ms: 42 },
+  },
+  {
+    event_type: "governance_blocked",
+    agent: "mem_guard",
+    status: "blocked",
+    payload: { reason_code: "refund_exceeds_authoritative_limit" },
+  },
+  {
+    event_type: "memory_written",
+    agent: "nanomemory",
+    status: "completed",
+    payload: { memory_type: "preference" },
+  },
+  {
+    event_type: "run_completed",
+    agent: "logistics_agent",
+    status: "completed",
+    payload: { total_tokens: 684, latency_ms: 312 },
+  },
 ];
 
 let demoTimer = null;
+
 function startDemo(reason) {
   if (demoTimer) return;
-  setStatus("demo", `demo · ${reason}`);
+  setConn("demo", "演示模式");
+  if (els.meta) els.meta.textContent = "演示数据 · " + reason;
   let index = 0;
-  demoTimer = setInterval(() => {
-    handleEvent(DEMO_EVENTS[index % DEMO_EVENTS.length]);
+  demoTimer = window.setInterval(() => {
+    handleEvent({ ...DEMO_EVENTS[index % DEMO_EVENTS.length], created_at: new Date().toISOString() });
     index += 1;
-  }, 1100);
-  handleEvent(DEMO_EVENTS[0]);
+  }, 1600);
+  handleEvent({ ...DEMO_EVENTS[0], created_at: new Date().toISOString() });
+}
+
+/* ------------------------------------------------------------------ socket */
+function socketUrl() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const params = new URLSearchParams(location.search);
+  const query = new URLSearchParams();
+  for (const key of ["token", "admin_key"]) {
+    const value = params.get(key);
+    if (value) query.set(key, value);
+  }
+  const search = query.toString();
+  return proto + "://" + location.host + ENDPOINT + (search ? "?" + search : "");
 }
 
 function connect() {
+  setConn("connecting", "连接中");
   if (location.protocol === "file:") {
-    startDemo("local preview");
+    startDemo("本地预览");
     return;
   }
-  const proto = location.protocol === "https:" ? "wss" : "ws";
+
   let socket;
   try {
-    socket = new WebSocket(`${proto}://${location.host}/api/v1/ws/monitor`);
+    socket = new WebSocket(socketUrl());
   } catch {
-    startDemo("no websocket");
+    startDemo("无法建立连接");
     return;
   }
-  socket.onopen = () => setStatus("live", "live · ws");
-  socket.onmessage = (message) => {
+
+  socket.addEventListener("open", () => {
+    if (demoTimer) {
+      window.clearInterval(demoTimer);
+      demoTimer = null;
+    }
+    setConn("live", "实时连接");
+    if (els.meta) els.meta.textContent = "实时事件流";
+  });
+
+  socket.addEventListener("message", (message) => {
     try {
       handleEvent(JSON.parse(message.data));
     } catch {
-      /* ignore malformed frames */
+      /* malformed frames are ignored; the console never renders raw payloads */
     }
-  };
-  socket.onerror = () => startDemo("ws error");
-  socket.onclose = () => {
-    if (statusEl.dataset.state !== "demo") setStatus("offline", "offline");
-    startDemo("ws closed");
-  };
+  });
+
+  socket.addEventListener("error", () => startDemo("连接异常"));
+  socket.addEventListener("close", () => {
+    if (!demoTimer) startDemo("连接已关闭");
+  });
 }
+
 connect();
-
-// ---------------------------------------------------------------- loop
-const clock = new THREE.Clock();
-
-function tick() {
-  const delta = clock.getDelta();
-  const elapsed = clock.elapsedTime;
-
-  core.rotation.y += delta * 0.25;
-  core.rotation.x = Math.sin(elapsed * 0.3) * 0.15;
-  shell.rotation.y -= delta * 0.12;
-  shell.rotation.z += delta * 0.05;
-  gate.rotation.z += delta * 0.22;
-  agentGroup.children.forEach((child, i) => {
-    if (child.isMesh && child.geometry.type === "OctahedronGeometry") {
-      child.rotation.y += delta * 0.6;
-      child.position.y = Math.sin(elapsed * 1.1 + i) * 0.18 + (i % 2 === 0 ? 0.9 : -0.9);
-    }
-  });
-
-  particles.forEach((particle) => {
-    if (!particle.active) return;
-    particle.t += particle.speed;
-    if (particle.t >= 1) {
-      particle.active = false;
-      particle.mesh.material.opacity = 0;
-      return;
-    }
-    const eased = 1 - Math.pow(1 - particle.t, 3);
-    particle.mesh.position.lerpVectors(particle.from, particle.to, eased);
-    particle.mesh.position.y += Math.sin(particle.t * Math.PI) * 0.9;
-    particle.mesh.material.opacity = 0.95 * (1 - particle.t);
-  });
-
-  controls.update();
-  renderer.render(scene, camera);
-  requestAnimationFrame(tick);
-}
-
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
 document.body.dataset.ready = "1";
-tick();

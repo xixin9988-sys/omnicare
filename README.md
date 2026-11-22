@@ -1,6 +1,8 @@
 # OmniCare — Enterprise E-commerce AI Agent Platform (MVP)
 
 > 当前交付是 **Local MVP / architecture baseline**，不是 Production Ready。默认 Mock LLM、SQLite、local memory adapter 与 deterministic local guard，方便无外部密钥启动并验收闭环。
+>
+> **v0.2.0（2026-11-22）安全轮：** OIDC/JWT 身份核心、MCP 传输层认证与可信身份上下文（工具不再接收 token 参数）、记忆溯源审计链、NanoMemory provenance/user_id/session 契约对齐。细节见 [SECURITY_FIXES.md](SECURITY_FIXES.md) 的 S-01…S-06 与 [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md)。
 
 ## 1. 功能范围
 
@@ -10,10 +12,13 @@
 - 工具执行前治理：订单归属、可退金额上限、订单状态；退款只创建 `pending_review` 申请，
   由管理员经 `POST /api/v1/refunds/{id}/decision` 审批（`approve`/`reject`/`settle`，四眼原则，
   逐条审计），**不触发真实打款**。
-- MemoryPort 适配层：本地 JSONL demo adapter，及按 NanoMemory 文档 REST 路由/Session Header 编写的 HTTP adapter。
+- MemoryPort 适配层：本地 JSONL demo adapter，及对齐 NanoMemory 0.2.1 的 HTTP adapter（服务端 session、`provenance`、`user_id` 过滤）。
+- 记忆溯源审计链：偏好记忆写入时生成 HMAC attestation，检索前校验；管理员可通过 `GET /api/v1/memories/{id}/provenance` 查看来源。
+- 身份：`AUTH_MODE=jwt|oidc` 校验 OIDC 风格 JWT（算法固定、iss/aud、租户白名单、jti 撤销、scope）；生产启动自检拒绝 `dev`/legacy `token` 模式。
 - GovernancePort 适配层：本地确定性演示策略；替换为你的 mem-guard SDK adapter 时不需要改 Supervisor。
 - WebSocket `/api/v1/ws/monitor` 实时推送 Agent/Tool 事件；REST metrics/event endpoints 提供历史数据。
-- 独立 MCP v2 Streamable HTTP Server，默认只暴露商品搜索和物流查询两个只读工具。
+- Synthelix 风格的极简 Web 控制台（`/ui/`）：纯白画布、实时事件流、运行指标与治理状态；无 Three.js、无构建步骤。
+- 独立 MCP v2 Streamable HTTP Server，默认只暴露商品搜索和物流查询两个只读工具；jwt/oidc 模式下每个请求必须携带 `Authorization: Bearer <JWT>`，工具参数里没有 token/user_id，身份由传输层提供并再次校验。
 - n8n webhook dispatch 适配器（URL 未配置时只写日志，不会假装发送成功）。
 
 ## 2. 本地启动
@@ -30,25 +35,51 @@ cp .env.example .env  # Windows: Copy-Item .env.example .env
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-健康检查：`http://127.0.0.1:8000/health`
+健康检查：`http://127.0.0.1:8000/health`（也保留 `/api/v1/health`）
 Swagger：`http://127.0.0.1:8000/docs`
+
+### 2.1 JWT / OIDC 模式（HTTP API 与 MCP 共用同一个令牌）
+
+```bash
+export AUTH_MODE=jwt
+export AUTH_SECRET=$(python -c "import secrets;print(secrets.token_hex(32))")
+export AUTH_JWT_ISSUER=http://127.0.0.1:8000
+export AUTH_JWT_AUDIENCE=omnicare-api
+export MCP_REQUIRED_SCOPES=omnicare.read
+
+# 本地签发一个演示令牌（仅 local/dev/test；APP_ENV=production 会拒绝）
+python -m app.auth_cli issue-token --user demo_user_001 --role user --scopes omnicare.read
+
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m app.mcp_server   # 需要同一组 AUTH_* 环境变量，MCP 监听 127.0.0.1:9000/mcp
+```
+
+外部 IdP：设置 `AUTH_MODE=oidc`、`AUTH_JWT_ALGORITHM=RS256`、`AUTH_JWT_ISSUER`、
+`AUTH_JWT_AUDIENCE`、`AUTH_JWKS_URL` 即可，OmniCare 只做资源服务器，不签发生产令牌。
 
 ## 3. 端到端演示
 
 创建会话：
 
 ```bash
+# AUTH_MODE=dev（local/test 默认）：X-User-Id 只用于本地演示，loopback 绑定
 curl -X POST http://127.0.0.1:8000/api/v1/sessions \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"demo_user_001"}'
+  -H "X-User-Id: demo_user_001" -H "Content-Type: application/json" \
+  -d '{}'
+
+# AUTH_MODE=jwt：令牌是唯一身份来源，body 里的 user_id 只是可选断言
+TOKEN=$(python -m app.auth_cli issue-token --user demo_user_001 --scopes omnicare.read)
+curl -X POST http://127.0.0.1:8000/api/v1/sessions \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 把返回的 `session_id` 放入请求：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"demo_user_001","session_id":"<SESSION_ID>","message":"我的订单 ORD-2026-0001 物流到哪了？"}'
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"session_id":"<SESSION_ID>","message":"我的订单 ORD-2026-0001 物流到哪了？"}'
 ```
 
 其它演示消息：
@@ -78,7 +109,13 @@ LLM_MODEL=deepseek-flash
 
 ### NanoMemory
 
-将 `MEMORY_BACKEND=nanomemory_http` 并配置 `NANOMEMORY_BASE_URL`。适配器使用你 v1.6 文档约定的 `X-NanoMemory-Session-ID`、`GET /api/v1/memory/long-term` 和 `POST /api/v1/memory/long-term`。由于该开发规格没有在此仓库中完整定义每个响应字段和写入 DTO，`app/memory/nanomemory_http.py` 将 JSON 映射集中隔离；上线前必须根据实际发布版 OpenAPI/SDK 对齐字段并执行契约测试。Working/episodic memory、会话创建以及完整记忆生命周期由 NanoMemory 自身负责。
+将 `MEMORY_BACKEND=nanomemory_http` 并配置 `NANOMEMORY_BASE_URL`（NanoMemory 0.2.1+）。适配器会：
+
+- 用 `GET /api/v1/version` 探测单/多 session 模式；单 session 不发送 `X-NanoMemory-Session-ID`（使用服务端默认 session），多 session 通过 `POST /api/v1/sessions` 为每个 OmniCare 会话创建并缓存一个 NanoMemory session；
+- 用 `GET /api/v1/memory/recall?user_id=` 做治理检索、`GET /api/v1/memory/long-term` 补全 trust；
+- 写偏好时 `POST /api/v1/memory/long-term` 携带 `source_type=user`、`user_id` 和 `provenance`（`source_kind=user`、`source_ref=omnicare://sessions/<id>/runs/<id>`、`created_by`），读回时映射为 `MemoryRecord.provenance`，由 OmniCare 的 attestation 链再次校验。
+
+Working/episodic memory、会话创建以及完整记忆生命周期由 NanoMemory 自身负责；`NANOMEMORY_API_KEY` 只用于可选的服务端鉴权。
 
 ### mem-guard
 
@@ -93,9 +130,16 @@ LLM_MODEL=deepseek-flash
 - 退款审核：`GET /api/v1/refunds`（管理员，可按 `status` 过滤）、
   `POST /api/v1/refunds/{id}/decision`（管理员，`{"decision": "approve|reject|settle"}`）、
   `GET /api/v1/refunds/{id}/audit`（管理员，逐条审计）、`GET /api/v1/refunds/mine`（只返回自己的申请）
-- MCP Server：`python -m app.mcp_server`，连接 `http://127.0.0.1:9000/mcp`。`check_logistics`
-  的身份来自签名用户令牌（`user_token`），**不再接受 `user_id` 参数**；`MCP_AUTH_TOKEN` 只是网关级
-  传输认证，不能代替用户身份。不要直接暴露退款写操作。
+- MCP Server：`python -m app.mcp_server`，连接 `http://127.0.0.1:9000/mcp`。
+  - `AUTH_MODE=jwt|oidc`：每个 JSON-RPC 请求都要带 `Authorization: Bearer <JWT>`，MCP SDK 的
+    bearer 中间件在工具执行前校验签名、issuer/audience、租户白名单、scope（`MCP_REQUIRED_SCOPES`，默认
+    `omnicare.read`）。
+  - 工具参数里**没有** `user_token`/`gateway_token`/`user_id`：`search_products(query)`、
+    `check_logistics(order_id)`；身份来自已验证令牌（subject），物流工具只查该 subject 自己的订单。
+  - 两个工具都发布只读 annotations（`readOnlyHint=true`、`destructiveHint=false`、
+    `idempotentHint=true`、`openWorldHint=false`），方便 Host 判断行为。
+  - `AUTH_MODE=dev|token` 仅限 local/dev/test 提供无认证演示；其它环境在构造 MCP server 时直接失败。
+  - 退款写操作不通过 MCP 暴露。
 
 ## 7. Docker
 
@@ -115,15 +159,27 @@ docker compose --profile automation up --build
 
 n8n: `http://localhost:5678`。首次进入后创建工作流并把 Webhook URL 写入 `N8N_WEBHOOK_URL`，重新启动 API。
 
-生产形态（PostgreSQL + 签名令牌，缺少密钥直接拒绝启动）：
+生产形态（PostgreSQL + JWT/OIDC 身份，缺少密钥直接拒绝启动）：
 
 ```bash
+# 自托管 JWT（HS256）：
+export AUTH_MODE=jwt
 export AUTH_SECRET=$(python -c "import secrets;print(secrets.token_hex(32))")
-export ADMIN_API_KEY=$(python -c "import secrets;print(secrets.token_hex(24))")
-export MCP_AUTH_TOKEN=$(python -c "import secrets;print(secrets.token_hex(24))")
+export POSTGRES_PASSWORD=$(python -c "import secrets;print(secrets.token_hex(24))")
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# 或外部 IdP（OIDC，RS256 + JWKS）：
+export AUTH_MODE=oidc
+export AUTH_JWT_ALGORITHM=RS256
+export AUTH_JWT_ISSUER=https://idp.example.com
+export AUTH_JWT_AUDIENCE=omnicare-api
+export AUTH_JWKS_URL=https://idp.example.com/.well-known/jwks.json
 export POSTGRES_PASSWORD=$(python -c "import secrets;print(secrets.token_hex(24))")
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
+
+生产 compose 不再需要 `MCP_AUTH_TOKEN`：HTTP API 与 MCP 共用同一个 JWT。管理员接口要求令牌
+带 `admin` role；`ADMIN_API_KEY` 仅保留给 local dev 的监控 socket 提权。
 
 ## 8. 测试
 
@@ -138,73 +194,90 @@ ruff format --check .
 
 ## 9. 当前限制 / 下一阶段
 
-1. 身份：`AUTH_MODE=token` 时由 HMAC 签名令牌给出 `user_id`；`AUTH_MODE=dev`（信任 `X-User-Id`）
-   只允许 local/dev/test，且默认 compose 只绑定 `127.0.0.1`。启动自检见 `app/core/preflight.py`。
-   仍缺 IdP、密钥轮换与吊销。
+1. 身份：生产只接受 `AUTH_MODE=jwt|oidc`；`dev`/legacy `token` 仅限 local/dev/test，默认 compose 只绑定
+   `127.0.0.1`。JWT 支持 HS*/RS/ES 与 JWKS，算法固定、校验 iss/aud/exp/nbf、租户白名单与 jti 撤销，
+   启动自检见 `app/core/preflight.py`。仍缺：内置 IdP、数据库级吊销/轮换、多租户数据列隔离。
 2. 目前 WebSocket EventBroker 是单进程内存广播；多 worker / 多实例必须换 Redis Streams、NATS 或 Kafka，并保证事件顺序与幂等。
 3. Local memory adapter 仅做演示关键词匹配，不具备 NanoMemory 的 BM25/三元组/关系扩展能力。
 4. Local guard 仅覆盖示例策略；需对接真正 mem-guard 并增加规则版本、策略签名/证明、审计和污染基准测试。
+   记忆溯源已用 OmniCare HMAC attestation + NanoMemory provenance 双重绑定，但 mem-guard 0.1.1 无
+   issuer registry，第三方 issuer 证明仍未实现。
 5. 当前 SQLite 适用于开发；生产改 PostgreSQL（CI 已用 PostgreSQL 16 跑并发退款测试），并引入 Alembic migration、连接池和备份恢复验证。
 6. 退款审批状态机已有（`pending_review → approved/rejected`，`approved → settled`，含审计与额度校验），
    但**没有支付网关执行**：`settle` 只记账到 `orders.refunded_amount`，真正的打款回调仍是空缺。
-7. 3D Three.js 大屏、用户端 Vue/React、n8n 工作流配置模板尚未进入本轮后端 MVP。
+7. Web 控制台是本轮交付的静态极简版（实时事件流 + KPI + 治理状态）；用户端 Vue/React 聊天界面与 n8n 工作流模板仍在后续 Phase。
 
 详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)、[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-## Verification status (2026-11-11, v0.1.2)
+## Verification status (2026-11-22, v0.2.0 branch)
 
-Replaces the earlier "8 passed" note. Every number below is reproducible with the commands in
-§8; nothing here is claimed as production-grade authentication.
+Every number below is reproducible with the commands in §8; nothing here is claimed as
+production-grade authentication.
 
 | Check | Where | Result |
 | --- | --- | --- |
-| `pytest contract_tests -q` | local, no DB | **48 passed** |
-| `pytest tests -q` (SQLite) | CI + local replica | **24 passed, 2 skipped** |
-| `pytest tests -q` (PostgreSQL 16) | CI `full-suite` job | **25 passed** (row-lock and concurrency tests) |
-| `ruff check .` / `ruff format --check .` | CI + local | clean |
-| Boot guard: `APP_ENV=production AUTH_MODE=dev` | local | import raises `ConfigurationError` |
+| `pytest contract_tests -q` | local, no DB | **129 passed** |
+| `pytest tests -q` (SQLite) | local (CI reruns) | **43 passed, 3 skipped** |
+| `pytest tests -q` (PostgreSQL 16 row locks) | CI `full-suite` job | this branch's CI run pending |
+| `ruff check .` / `ruff format --check .` | local + CI | clean |
+| Boot guard matrix | local | production+jwt boots; production+dev / production+token / staging+dev refused |
+| Live MCP server with JWT transport | local real process | **15/15 probes PASS** (401 matrix, annotations, no token arguments, owner isolation, no token echo) |
+| Live HTTP API with JWT | local real uvicorn | **13/13 probes PASS** (401/403 matrix, session/chat, admin role, provenance event) |
+| Live NanoMemory 0.2.1 + adapter | local real service | provenance round-trip, `user_id` recall scoping, single-session negotiation |
+| Provenance admin endpoint | local | `verified: true` with source_ref/session/run/tenant |
 
-CI (`.github/workflows/ci.yml`) blocks on all three jobs: `contracts`, `ruff`, and
-`full suite (blocking)` — the last one runs the suite twice (SQLite, then PostgreSQL 16).
-Green reference run: `8bbefe5` on `main`, release [v0.1.2](https://github.com/xixin9988-sys/omnicare/releases/tag/v0.1.2).
+Green reference: branch `feat/mcp-auth-provenance` (2026-11-22). The MCP tool-annotation
+branch from PR #2 is merged locally into this branch; its remote PR is still open.
+Reproducible live probes: `scripts/verify_mcp_live.py`, `scripts/verify_http_live.py`,
+`scripts/verify_nanomemory_live.py` (each docstring lists the exact startup commands).
 
-- Memory adapter (`app/memory/nanomemory_http.py`) uses the real NanoMemory 0.2.0 routes:
-  `GET /api/v1/memory/recall` for governed retrieval, `GET /api/v1/memory/long-term` for trust
-  enrichment, `POST /api/v1/memory/long-term` for preference writes with `source_type=user`.
+- Identity: `AUTH_MODE=jwt|oidc` verifies OIDC-style JWTs (pinned algorithm, HS*/RS/ES,
+  issuer/audience/leeway, tenant allowlist, `jti` revocation, scopes). Production startup refuses
+  `dev` and the legacy self-issued `token` mode (`app/core/preflight.py`).
+- Memory adapter (`app/memory/nanomemory_http.py`) negotiates the NanoMemory session contract
+  and passes `user_id` + `provenance`; `POST /api/v1/memory/long-term` in NanoMemory 0.2.1
+  stores both.
+- Memory provenance: preference writes create an HMAC attestation row
+  (`app/services/attestation.py` + `app/services/memory_provenance.py`); retrieval quarantines
+  memories whose attestation is missing/tampered. Admin API:
+  `GET /api/v1/memories/{memory_id}/provenance`.
 - Governance adapter (`app/governance/memguard_adapter.py`) uses the real mem-guard SDK (Guard,
   RuleCompiler, TrustLevel) for input/output rules and trust vocabulary; business authorization
   that needs the database stays in LocalPolicyGuard and is composed inside the adapter
   (`GOVERNANCE_BACKEND=memguard`).
-- Fixtures were captured from a real NanoMemory TestClient run:
-  `tests/fixtures/nanomemory_contract.json`.
 
-Security work from the two audit rounds is tracked in [SECURITY_FIXES.md](SECURITY_FIXES.md):
-V-01…V-08 (token identity, refund math, admin scoping, memory-file collision, MCP, WS, CI) and
-R-01…R-04 (fail-closed preflight, MCP identity binding, server-side refund idempotency,
-PostgreSQL row locks).
+Security work is tracked in [SECURITY_FIXES.md](SECURITY_FIXES.md): V-01…V-08, R-01…R-04, and
+this round's S-01…S-06 (JWT/OIDC core, MCP trusted auth, memory provenance, NanoMemory
+contract, deployment/HTTP clean-up, verification).
 
 ### Still NOT VERIFIED
 
-Docker image build and both compose overlays (no Docker in the dev environment), MCP server
-runtime / MCP Inspector (the `mcp` SDK is not installed there; only `app/mcp_auth.py` is unit
-tested), real DeepSeek calls, n8n delivery, payment-gateway settlement of an approved refund,
-IdP/RBAC/tenant scoping, and Alembic migrations.
+Docker image build and both compose overlays (no Docker daemon in this environment),
+PostgreSQL row-lock/concurrency suite locally (CI service only), live OIDC against a real IdP
+(unit tests cover RS256/JWKS), MCP Inspector UI, real DeepSeek calls, n8n delivery,
+payment-gateway settlement of an approved refund, Alembic migrations, and multi-tenant
+data-column isolation.
 
-Trust minting is still adapter-attested because mem-guard v0.1.1 ships without an issuer
-registry.
+Trust minting is OmniCare-attested (HMAC) plus NanoMemory provenance; mem-guard v0.1.1 ships
+without an issuer registry, so third-party issuer proofs are not claimed.
 
-## Realtime UI (Three.js)
+## Web console (Synthelix edition)
 
-The web dashboard renders the agent / memory / governance loop in 3D and is served by the API:
+The admin console is a dependency-free, white-canvas dashboard served by the API. It follows the
+Synthelix wordmark palette (black→`#6a00ff` gradient for "Synth", deep brown `#654321` for
+"elix") and Apple-like restraint: no 3D scene, no canvas, no build step, no external fonts.
 
-- `GET /ui/` - static dashboard (`web/`, mounted by `app.main`)
-- `WS /api/v1/ws/monitor` - live agent events; when the socket is unavailable the HUD switches
-  to DEMO mode so the scene still renders without the backend
+- `GET /ui/` - static console (`web/`, mounted by `app.main`)
+- `WS /api/v1/ws/monitor` - live agent events; if the socket is unavailable (static preview,
+  JWT mode without an admin token, network hiccup) the page clearly switches to **演示模式**
+  with the same event shape
+- `?token=<admin JWT>` / `?admin_key=<key>` on the `/ui/` URL are forwarded to the WebSocket
+  handshake when the deployment requires admin authentication (local/controlled use only: the
+  token appears in browser history and proxy logs; production should inject it at the gateway)
 
-Scene: a central **Memory Core** (violet icosahedron), a **Governance Ring** (amber torus), four
-**Agent nodes** (Supervisor / Logistics / AfterSales / Shopping) and event particles that fly
-from an agent to the core (memory), to the ring (governance) or stay local (tool call).
-Three.js is vendored under `web/vendor/`, so the page renders offline.
+The console shows five live counters (Agent 运行 / 治理阻断 / 记忆事件 / 工具调用 / Token 用量),
+an event stream with per-event status, the agent runtime and the four governance gates. The
+Three.js vendor bundle and animation loop were removed on purpose.
 
 ![UI preview](docs/ui-preview.png)
 

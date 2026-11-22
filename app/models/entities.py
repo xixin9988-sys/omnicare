@@ -157,7 +157,34 @@ class GovernanceIncident(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class MemoryProvenance(Base):
+    """Append-only attestation row for a memory written by OmniCare.
+
+    The row binds a memory id to the conversation/run that produced it and carries an
+    HMAC-SHA256 digest (``integrity``) over those fields. Retrieval trusts a memory only when
+    this row exists, its digest verifies, and the memory's own provenance points at the same
+    ``source_ref``.
+    """
+
+    __tablename__ = "memory_provenance"
+    memory_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    backend: Mapped[str] = mapped_column(String(40), default="local")
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default")
+    user_id: Mapped[str] = mapped_column(String(64))
+    session_id: Mapped[str] = mapped_column(String(36), default="")
+    run_id: Mapped[str] = mapped_column(String(36), default="")
+    source_type: Mapped[str] = mapped_column(String(40), default="user")
+    source_ref: Mapped[str] = mapped_column(String(500), default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="omnicare")
+    issuer: Mapped[str] = mapped_column(String(80), default="omnicare")
+    integrity: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, index=True
+    )
+
+
 Index("ix_agent_events_created_type", AgentEvent.created_at, AgentEvent.event_type)
+Index("ix_memory_provenance_tenant_user", MemoryProvenance.tenant_id, MemoryProvenance.user_id)
 
 # One open refund per (order, amount+reason): the database, not the application, wins races.
 # Partial indexes are supported by SQLite and PostgreSQL (the two supported backends).

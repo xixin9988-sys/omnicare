@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class SessionCreate(BaseModel):
-    user_id: str = Field(min_length=1, max_length=64)
+    # Optional echo of the authenticated user; the token is the only identity source.
+    user_id: str | None = Field(default=None, max_length=64)
 
 
 class SessionOut(BaseModel):
@@ -17,7 +18,8 @@ class SessionOut(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    user_id: str = Field(min_length=1, max_length=64)
+    # Optional echo; if provided it must match the token identity (403 user_id_mismatch).
+    user_id: str | None = Field(default=None, max_length=64)
     session_id: str = Field(min_length=1, max_length=36)
     message: str = Field(min_length=1, max_length=4000)
 

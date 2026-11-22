@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
 app.state.settings = settings
 app.add_middleware(
     CORSMiddleware,
@@ -109,6 +109,15 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 app.include_router(router, prefix=settings.api_prefix)
+
+
+@app.get("/health", include_in_schema=False)
+def root_health() -> dict:
+    """Unprefixed liveness alias (Docker HEALTHCHECK and deployment probes use /health)."""
+    from datetime import UTC, datetime
+
+    return {"status": "ok", "service": "omnicare-api", "time": datetime.now(UTC).isoformat()}
+
 
 # ---------------------------------------------------------------- realtime UI
 from pathlib import Path as _Path

@@ -34,15 +34,52 @@ class Settings(BaseSettings):
     admin_api_key: str = ""
 
     # Authentication. ``dev`` trusts X-User-Id and is refused when APP_ENV=production.
+    # ``token`` is the legacy self-issued HMAC bearer mode (refused in production).
+    # ``jwt``/``oidc`` verify OIDC-style JWTs from AUTH_SECRET or a public key/JWKS.
     auth_mode: str = "dev"
     auth_secret: str = ""
     auth_token_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
-    mcp_auth_token: str = ""
+    mcp_auth_token: str = ""  # deprecated: MCP moves to the same JWT as the API
+
+    # JWT/OIDC verification. Tokens are the only source of identity in jwt/oidc modes.
+    auth_jwt_issuer: str = ""
+    auth_jwt_audience: str = ""
+    auth_jwt_algorithm: str = "HS256"
+    auth_jwt_public_key: str = ""
+    auth_jwt_public_key_path: str = ""
+    auth_jwks_url: str = ""
+    auth_jwt_leeway_seconds: int = Field(default=30, ge=0, le=300)
+    default_tenant_id: str = "default"
+    # CSV allowlist; empty means "any tenant claim is accepted".
+    auth_allowed_tenants: str = ""
+    # CSV denylist of `jti` claim values (short-lived revocation list).
+    auth_revoked_jtis: str = ""
+    mcp_resource_url: str = ""
+    # Scopes an MCP client token must carry (space/comma separated).
+    mcp_required_scopes: str = "omnicare.read"
     log_level: str = "INFO"
 
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def allowed_tenants(self) -> frozenset[str]:
+        return frozenset(
+            item.strip() for item in self.auth_allowed_tenants.split(",") if item.strip()
+        )
+
+    @property
+    def revoked_jtis(self) -> frozenset[str]:
+        return frozenset(item.strip() for item in self.auth_revoked_jtis.split(",") if item.strip())
+
+    @property
+    def required_mcp_scopes(self) -> tuple[str, ...]:
+        return _split_scopes(self.mcp_required_scopes)
+
+
+def _split_scopes(value: str) -> tuple[str, ...]:
+    return tuple(item for item in value.replace(",", " ").split() if item)
 
 
 @lru_cache
