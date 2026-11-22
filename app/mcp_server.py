@@ -5,6 +5,7 @@ Endpoint: http://127.0.0.1:9000/mcp (Streamable HTTP)
 """
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -14,10 +15,20 @@ from app.models.entities import Order, Product
 
 mcp = MCPServer("OmniCare Business Tools")
 
+# These annotations describe the actual local-database behavior of the tools.
+# They are client-facing hints, not authorization controls; server-side checks
+# remain authoritative.
+READ_ONLY_LOCAL_DATA = ToolAnnotations(
+    read_only_hint=True,
+    destructive_hint=False,
+    idempotent_hint=True,
+    open_world_hint=False,
+)
 
-@mcp.tool()
+
+@mcp.tool(annotations=READ_ONLY_LOCAL_DATA)
 async def search_products(query: str) -> list[dict]:
-    """Search active products by name keyword. Read-only."""
+    """Search active products by name keyword. Read-only local catalog lookup."""
     await init_db()
     async with SessionLocal() as db:
         rows = (
@@ -33,12 +44,13 @@ async def search_products(query: str) -> list[dict]:
         ]
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_LOCAL_DATA)
 async def check_logistics(order_id: str, user_token: str = "", gateway_token: str = "") -> dict:
     """Check logistics for the authenticated caller's own order.
 
     Identity comes from the signed ``user_token`` (plus the optional gateway token). There is
     no ``user_id`` parameter: a caller can no longer name the customer it wants to read.
+    This tool reads the local order record and does not contact an external carrier API.
     """
     settings = get_settings()
     try:
