@@ -28,7 +28,7 @@ dependencies = [
 # Real integrations, installed from the public GitHub projects.
 integrations = [
   "mem-guard @ git+https://github.com/xixin9988-sys/mem-guard.git@v0.1.1",
-  "nanomemory @ git+https://github.com/xixin9988-sys/nanomemory.git@v0.2.0",
+  "nanomemory @ git+https://github.com/xixin9988-sys/nanomemory.git@v0.2.1",
 ]
 dev = [
   "pytest>=8.3,<9.0",
