@@ -85,11 +85,18 @@ def bearer_token(
 # ------------------------------------------------------------------ database seed
 async def seed_database() -> None:
     async with SessionLocal() as db:
+        # PostgreSQL enforces the users -> orders FK and SQLAlchemy has no relationship to
+        # order these inserts, so flush the parents first (SQLite hid this locally).
         db.add_all(
             [
                 User(id=DEMO_USER, display_name="演示用户"),
                 User(id="alice", display_name="Alice"),
                 User(id="bob", display_name="Bob"),
+            ]
+        )
+        await db.flush()
+        db.add_all(
+            [
                 Product(
                     id="SKU-SHOE-001",
                     sku="SHOE-001",
