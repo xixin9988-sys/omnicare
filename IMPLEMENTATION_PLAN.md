@@ -124,3 +124,20 @@ omnicare/
 ## 5. 本轮执行状态
 
 代码骨架和文档已生成。本轮环境不保证具备项目全部 Python 依赖、Docker daemon 或 NanoMemory/mem-guard 实际部署，因此没有将安装、容器构建、真实 SDK 连接或运行测试预先标为 VERIFIED。应在本地按 README 执行，并将真实命令输出保存到 `reports/`。
+
+## 6. 0.2.0 安全轮完成情况（2026-11-22）
+
+本轮对应外部评审的 P0/P1：身份、MCP 认证、记忆溯源、NanoMemory 契约、部署配置。
+
+- [x] OIDC/JWT 身份核心：`app/core/jwt.py`（算法固定、HS*/RS/ES、JWKS、iss/aud、租户白名单、
+  jti 撤销、scope），生产启动自检拒绝 `dev`/legacy `token`。
+- [x] MCP 传输层认证与可信身份上下文：`app/mcp_token.py` + `app/mcp_auth.py`；工具不再接收
+  token/user_id 参数；只读 annotations 上线。
+- [x] 记忆溯源审计链：`app/services/attestation.py` + `app/services/memory_provenance.py`，
+  写入同事务 attestation、检索前校验、管理员溯源接口。
+- [x] NanoMemory 0.2.1 契约：`provenance` / `user_id` 写入，单/多 session 协商。
+- [x] HTTP 表面：body `user_id` 可选断言，`/health` 别名，生产 compose 改 JWT/OIDC。
+- [x] 验收：真实 MCP server（15/15）、真实 HTTP API（13/13）、真实 NanoMemory + adapter，
+  contract 129 / tests 43 / NanoMemory 293 / mem-guard 33；详见 `VERIFICATION_REPORT.md`。
+- [ ] 仍待：PostgreSQL 行锁本地/CI 证据、Docker 实跑、真实 IdP 对接、支付结算、Alembic、
+  多租户数据列隔离、分布式事件总线。
