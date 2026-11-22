@@ -1,6 +1,6 @@
 # OmniCare MVP 验证报告
 
-**报告日期：** 2026-11-22（v0.2.0，分支 `feat/mcp-auth-provenance`）
+**报告日期：** 2026-11-22（v0.2.0，`main` @ `01e9d63`，release [v0.2.0](https://github.com/xixin9988-sys/omnicare/releases/tag/v0.2.0)）
 **交付状态：** Local MVP / Architecture Baseline（**不是** Production Ready）
 
 > 本文件取代 2026-11-11 的 v0.1.2 版本。规则不变：只有在本机或 CI 真实执行过、并能指出
@@ -44,7 +44,7 @@
 | NanoMemory 真实服务 + OmniCare adapter | PASS | 真实 NanoMemory 服务（single-session）上验证：POST provenance 往返、adapter 写偏好返回 source_ref、recall(user_id) 命中本人记录、不会把 OmniCare session 当作 NanoMemory session |
 | 溯源管理接口 | PASS | 偏好聊天后 `GET /api/v1/memories/{id}/provenance`（admin）返回 `verified: true`、source_ref、session_id、run_id、tenant_id |
 | 认证 CLI | PASS | `python -m app.auth_cli issue-token ...` 产出 3 段 JWT；`APP_ENV=production` 时拒绝签发 |
-| CI 阻断 | 待 CI run | 本轮提交后以 GitHub Actions 结果为准；本地与 CI 使用同一套 contract/tests/lint 命令 |
+| CI 阻断 | **PASS** | 合并 PR #3 前后三次 job（contracts / ruff / full suite with PostgreSQL 16）全部 success；`main` push run [45050554147](https://github.com/xixin9988-sys/omnicare/actions/runs/45050554147) 三 job 全绿 |
 
 ## 可复跑的真实服务验收脚本
 
@@ -63,7 +63,7 @@ tools/list + annotations、工具参数无 token、Alice/Bob 订单隔离、响�
 
 | 项目 | 原因 / 下一步 |
 |---|---|
-| PostgreSQL 行锁与并发退款 | 本机无 PostgreSQL 服务；CI `full-suite` 会用 postgres:16 service 跑同一套测试（`tests/test_refund_concurrency_pg.py`） |
+| ~~PostgreSQL 行锁与并发退款~~ | 本机无 PostgreSQL 服务，但 CI `full-suite` 已在 postgres:16 service 上通过（PR #3 / `main` run 45050554147，含 `tests/test_refund_concurrency_pg.py`） |
 | Docker build 与 compose 叠层 | 本机无 Docker CLI/daemon；已静态更新 `docker-compose.prod.yml` 为 JWT/OIDC 并做 YAML 解析校验，未实际起容器 |
 | OIDC 对接真实 IdP | 只验证了本地 HS256 与 RS256 单元测试、JWKS 缓存路径；未接 Keycloak/Auth0 等 |
 | MCP Inspector UI | 未安装/未运行 Inspector；自定义真实 MCP 客户端验收已通过 |

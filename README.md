@@ -218,7 +218,7 @@ production-grade authentication.
 | --- | --- | --- |
 | `pytest contract_tests -q` | local, no DB | **129 passed** |
 | `pytest tests -q` (SQLite) | local (CI reruns) | **43 passed, 3 skipped** |
-| `pytest tests -q` (PostgreSQL 16 row locks) | CI `full-suite` job | this branch's CI run pending |
+| `pytest tests -q` (PostgreSQL 16 row locks) | CI `full-suite` job | **green** on PR #3 and the `main` push run |
 | `ruff check .` / `ruff format --check .` | local + CI | clean |
 | Boot guard matrix | local | production+jwt boots; production+dev / production+token / staging+dev refused |
 | Live MCP server with JWT transport | local real process | **15/15 probes PASS** (401 matrix, annotations, no token arguments, owner isolation, no token echo) |
@@ -226,8 +226,9 @@ production-grade authentication.
 | Live NanoMemory 0.2.1 + adapter | local real service | provenance round-trip, `user_id` recall scoping, single-session negotiation |
 | Provenance admin endpoint | local | `verified: true` with source_ref/session/run/tenant |
 
-Green reference: branch `feat/mcp-auth-provenance` (2026-11-22). The MCP tool-annotation
-branch from PR #2 is merged locally into this branch; its remote PR is still open.
+Green reference: `main` @ `01e9d63`, release [v0.2.0](https://github.com/xixin9988-sys/omnicare/releases/tag/v0.2.0).
+PR [#2](https://github.com/xixin9988-sys/omnicare/pull/2) (annotations), PR
+[#3](https://github.com/xixin9988-sys/omnicare/pull/3) (this round) and the `main` push run are green.
 Reproducible live probes: `scripts/verify_mcp_live.py`, `scripts/verify_http_live.py`,
 `scripts/verify_nanomemory_live.py` (each docstring lists the exact startup commands).
 
