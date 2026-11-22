@@ -9,12 +9,12 @@ enterprise-only capabilities live in a separate private repository.
 - Supervisor / Router and the expert-agent interfaces
 - `MemoryPort`, `GovernancePort` and the local/demo adapters
 - The NanoMemory and mem-guard **adapters** and their contract tests
-- The Three.js realtime UI prototype
+- The Synthelix-styled web console (static HTML/CSS/JS under `web/`)
 - Documentation, audit and engineering plan
 
 ## What stays private (separate repository, commercial licence)
 
-- Production identity: OIDC/JWT, RBAC, tenant isolation
+- Enterprise RBAC/ABAC, tenant data-column isolation, IdP operations and policy packs
 - Enterprise storage adapters: PostgreSQL, Redis, message bus
 - Enterprise policy packs and the hosted governance control plane
 - Refund approval workflow, ledger and payment-gateway integration

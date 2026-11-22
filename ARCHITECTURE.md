@@ -17,7 +17,7 @@ OmniCare 为电商客服与售后场景提供统一 Agent 运行中台：用户�
 - 不允许 LLM 直接连接数据库、任意执行 SQL/Shell、动态导入 Python 函数。
 - 不让模型直接决定退款额度、订单所有权、库存或物流事实。
 - 不执行真实退款打款；MVP 只创建待审核申请。
-- 不以 3D 大屏替代可靠的事件审计、指标存储和告警系统。
+- 不以视觉大屏替代可靠的事件审计、指标存储和告警系统。
 
 ### 1.3 核心设计原则
 
@@ -35,7 +35,7 @@ OmniCare 为电商客服与售后场景提供统一 Agent 运行中台：用户�
 flowchart TB
   subgraph Client[客户端]
     U[Web / Mini Program Chat]
-    A[Admin Console / Three.js]
+    A[Admin Console / Synthelix web]
   end
   subgraph Edge[接入层]
     N[Nginx / TLS / Rate Limit]
@@ -394,16 +394,15 @@ MVP：Supervisor 事件 → SQL AgentEvent + in-process EventBroker → WebSocke
 
 生产：Supervisor → Transactional Outbox / OpenTelemetry spans + Kafka/NATS/Redis Streams → Observability consumer → PostgreSQL/ClickHouse/Prometheus → WebSocket/SSE gateway。只有持久化成功的事件可标记为 durable；消费者按 event_id 幂等，支持重放和游标续传。
 
-### 11.2 3D 可视化约定
+### 11.2 Web 控制台约定
 
-Three.js 节点只读取事件数据：
+控制台是 `web/` 下的无构建静态页面（HTML/CSS/原生 JS），通过 API 的 `/ui/` 挂载：
 
-- Agent 球体：Supervisor / Logistics / AfterSales / Shopping / Memory / Governance。
-- `agent_started`：节点进入 active glow；`tool_started`：源节点到工具节点生成短暂连线；`tool_completed`：连接变淡；`governance_blocked`：治理节点显示 warning pulse。
-- 指标卡片：Requests/min、P50/P95 latency、Token total、estimated/exact usage mix、block rate、agent error rate。
-- 球体动效不是权威状态；事件存储和 metrics 才是事实来源。
-
-建议把事件 payload 和视觉效果解耦，前端可无状态重放最近 N 条事件。
+- 视觉：白色画布 + Synthelix 品牌色（Synth 黑→`#6a00ff` 渐变、elix 深棕 `#654321`），Apple 式留白与细边框；不使用 Three.js、canvas 或外部字体，页面离线可渲染。
+- 数据：只读 `WS /api/v1/ws/monitor` 事件流；KPI 由事件累计（`run_completed`、`tool_started`、`memory_retrieved/written`、token 用量）。连接不可用时切换为明确标注的演示数据，不把演示值当作生产指标。
+- 渲染：只用白名单字段（event_type / agent / status / payload 摘要）构造 DOM `textContent`，禁止 `innerHTML` 注入事件原文。
+- 指标卡片扩展目标：Requests/min、P50/P95 latency、Token total、estimated/exact usage mix、block rate、agent error rate；生产接 `/api/v1/metrics/summary`（管理员）或专门只读指标网关。
+- 控制台画面不是权威状态；事件存储和 metrics 才是事实来源。
 
 ## 12. 安全、隐私与韧性要求
 
@@ -443,7 +442,7 @@ Three.js 节点只读取事件数据：
 | Governance | mem-guard Adapter | mem-guard signed policy/provenance API |
 | Event | in-process broker | Redis/NATS/Kafka + OTEL |
 | Automation | n8n webhook | n8n / workflow service |
-| Admin UI | none in current backend milestone | Vue/React + Three.js |
+| Admin UI | static Synthelix web console (`web/`, no build) | Vue/React + design system |
 | Deploy | Docker Compose | K8s or managed container platform |
 
 ## 14. 容量和性能目标（初始 SLO，需压测校准）
@@ -484,7 +483,7 @@ Three.js 节点只读取事件数据：
 - P0：接入真实 NanoMemory + mem-guard 契约测试；补身份认证与用户/租户隔离；退款账本与审批边界。
 - P1：PostgreSQL + Alembic；事件总线外置；n8n workflow + webhook signature + retry/DLQ。
 - P2：OpenTelemetry；Prometheus/Grafana 或 ClickHouse；管理 API RBAC；审计不可变存储。
-- P3：用户端聊天 UI；Three.js 运营大屏；灰度发布、CI/CD、压力测试、灾备演练。
+- P3：用户端聊天 UI；运营控制台增强（事件回放、图表）；灰度发布、CI/CD、压力测试、灾备演练。
 
 ## 17. 参考资料与既有规格
 

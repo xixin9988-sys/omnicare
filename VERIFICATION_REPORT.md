@@ -22,6 +22,9 @@
    模式由服务端创建并缓存 NanoMemory session（不再把 OmniCare session id 当 NanoMemory id）。
 5. **HTTP 表面**：`/sessions`、`/chat` 的 body `user_id` 改为可选断言；`/health` 恢复无前缀
    别名（Docker HEALTHCHECK 依赖）。
+6. **Web 控制台重设计**：去掉 Three.js/3D 场景，改为无构建、无外部字体的白色极简控制台（Synthelix
+   品牌色：黑→`#6a00ff` 渐变 + `#654321` 棕）；实时事件流、五项 KPI、Agent 与治理状态；
+   WebSocket 不可用时明确标注演示模式。
 
 ## VERIFIED（本次实际执行，可复跑）
 
@@ -31,7 +34,8 @@
 |---|---|---|
 | 契约测试（无 DB） | **129 passed** | `python -m pytest contract_tests -q`（omnicare） |
 | 完整测试套件（SQLite） | **43 passed, 3 skipped** | `python -m pytest tests -q`（omnicare）；3 skipped 为仅 PostgreSQL 的行锁/并发测试 |
-| ruff check + format | clean | `ruff check .` / `ruff format --check .`（omnicare，83 files formatted） |
+| ruff check + format | clean | `ruff check .` / `ruff format --check .`（omnicare） |
+| Web 控制台静态契约 | **4 passed** | `pytest contract_tests/test_ui_assets.py -q`；Edge headless 截图 `docs/ui-preview.png` |
 | NanoMemory 完整套件 | **293 passed, 2 skipped** | `python -m pytest tests -q`（nanomemory）；2 skipped 为平台 symlink 限制 |
 | mem-guard 完整套件 | **33 passed** | `python -m pytest tests -q`（mem-guard） |
 | 启动自检矩阵 | PASS | production+jwt 成功启动；production+dev / production+token / staging+dev / oidc 缺 issuer 均抛 `ConfigurationError` |
@@ -70,7 +74,7 @@ tools/list + annotations、工具参数无 token、Alice/Bob 订单隔离、响�
 
 ## NOT IMPLEMENTED（明确留到后续 Phase）
 
-- Vue/React 用户前端、Three.js 运维页与事件回放（页面存在但未做浏览器 E2E）。
+- 用户端 Vue/React 聊天前台与事件回放；Web 控制台已交付静态版（截图由 Edge headless 生成，未做浏览器交互 E2E）。
 - 完整 IdP/密钥轮换/数据库级吊销表、RBAC/ABAC 管理界面。
 - Alembic migration、支付账本/对账、Transactional Outbox、OpenTelemetry/Prometheus、压测与备份恢复演练。
 

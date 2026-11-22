@@ -37,7 +37,7 @@ omnicare/
 │   └── mcp_server.py
 ├── data/                    # local SQLite + demo memory (gitignored)
 ├── docs/
-├── frontend/admin/          # reserved for Three.js dashboard phase
+├── web/                     # static Synthelix console (HTML/CSS/JS, no build step)
 ├── tests/
 ├── ARCHITECTURE.md
 ├── IMPLEMENTATION_PLAN.md
@@ -66,7 +66,7 @@ omnicare/
 | n8n | `app/integrations/n8n.py` | mocked webhook test to add | Client implemented; external workflow NOT VERIFIED |
 | MCP | `app/mcp_server.py` | MCP Inspector integration test required | Code implemented; runtime NOT VERIFIED in this environment |
 | Docker | `Dockerfile`, `docker-compose.yml` | `docker compose build/up` | NOT VERIFIED in this environment |
-| Three.js UI | `frontend/admin/` | future browser test | NOT IMPLEMENTED |
+| Web 控制台 | `web/index.html`, `web/css/style.css`, `web/js/app.js` | `contract_tests/test_ui_assets.py` + Edge 截图 | Implemented（无构建、无 Three.js）；浏览器交互 E2E 待补 |
 
 ## 4. 下一阶段分解
 
@@ -109,7 +109,8 @@ omnicare/
 
 - [ ] 用户聊天 UI：流式消息、会话历史、Agent/Tool 状态。
 - [ ] 管理后台 RBAC、策略配置审批和审计。
-- [ ] Three.js Agent 节点场景；WebSocket event replay。
+- [x] 极简 Web 控制台（实时事件流 + KPI + 治理状态，Synthelix 白）。
+- [ ] 事件回放、图表与用户端聊天 UI。
 - [ ] 图表：请求量、P50/P95、Token、exact/estimated 结构、阻断数、工具失败数。
 - [ ] Playwright E2E + 录屏脚本。
 

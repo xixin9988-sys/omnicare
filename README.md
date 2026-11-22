@@ -17,6 +17,7 @@
 - 身份：`AUTH_MODE=jwt|oidc` 校验 OIDC 风格 JWT（算法固定、iss/aud、租户白名单、jti 撤销、scope）；生产启动自检拒绝 `dev`/legacy `token` 模式。
 - GovernancePort 适配层：本地确定性演示策略；替换为你的 mem-guard SDK adapter 时不需要改 Supervisor。
 - WebSocket `/api/v1/ws/monitor` 实时推送 Agent/Tool 事件；REST metrics/event endpoints 提供历史数据。
+- Synthelix 风格的极简 Web 控制台（`/ui/`）：纯白画布、实时事件流、运行指标与治理状态；无 Three.js、无构建步骤。
 - 独立 MCP v2 Streamable HTTP Server，默认只暴露商品搜索和物流查询两个只读工具；jwt/oidc 模式下每个请求必须携带 `Authorization: Bearer <JWT>`，工具参数里没有 token/user_id，身份由传输层提供并再次校验。
 - n8n webhook dispatch 适配器（URL 未配置时只写日志，不会假装发送成功）。
 
@@ -204,7 +205,7 @@ ruff format --check .
 5. 当前 SQLite 适用于开发；生产改 PostgreSQL（CI 已用 PostgreSQL 16 跑并发退款测试），并引入 Alembic migration、连接池和备份恢复验证。
 6. 退款审批状态机已有（`pending_review → approved/rejected`，`approved → settled`，含审计与额度校验），
    但**没有支付网关执行**：`settle` 只记账到 `orders.refunded_amount`，真正的打款回调仍是空缺。
-7. 3D Three.js 大屏、用户端 Vue/React、n8n 工作流配置模板尚未进入本轮后端 MVP。
+7. Web 控制台是本轮交付的静态极简版（实时事件流 + KPI + 治理状态）；用户端 Vue/React 聊天界面与 n8n 工作流模板仍在后续 Phase。
 
 详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)、[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
@@ -218,7 +219,7 @@ production-grade authentication.
 | `pytest contract_tests -q` | local, no DB | **129 passed** |
 | `pytest tests -q` (SQLite) | local (CI reruns) | **43 passed, 3 skipped** |
 | `pytest tests -q` (PostgreSQL 16 row locks) | CI `full-suite` job | this branch's CI run pending |
-| `ruff check .` / `ruff format --check .` | local + CI | clean (83 files formatted) |
+| `ruff check .` / `ruff format --check .` | local + CI | clean |
 | Boot guard matrix | local | production+jwt boots; production+dev / production+token / staging+dev refused |
 | Live MCP server with JWT transport | local real process | **15/15 probes PASS** (401 matrix, annotations, no token arguments, owner isolation, no token echo) |
 | Live HTTP API with JWT | local real uvicorn | **13/13 probes PASS** (401/403 matrix, session/chat, admin role, provenance event) |
@@ -260,18 +261,23 @@ data-column isolation.
 Trust minting is OmniCare-attested (HMAC) plus NanoMemory provenance; mem-guard v0.1.1 ships
 without an issuer registry, so third-party issuer proofs are not claimed.
 
-## Realtime UI (Three.js)
+## Web console (Synthelix edition)
 
-The web dashboard renders the agent / memory / governance loop in 3D and is served by the API:
+The admin console is a dependency-free, white-canvas dashboard served by the API. It follows the
+Synthelix wordmark palette (black→`#6a00ff` gradient for "Synth", deep brown `#654321` for
+"elix") and Apple-like restraint: no 3D scene, no canvas, no build step, no external fonts.
 
-- `GET /ui/` - static dashboard (`web/`, mounted by `app.main`)
-- `WS /api/v1/ws/monitor` - live agent events; when the socket is unavailable the HUD switches
-  to DEMO mode so the scene still renders without the backend
+- `GET /ui/` - static console (`web/`, mounted by `app.main`)
+- `WS /api/v1/ws/monitor` - live agent events; if the socket is unavailable (static preview,
+  JWT mode without an admin token, network hiccup) the page clearly switches to **演示模式**
+  with the same event shape
+- `?token=<admin JWT>` / `?admin_key=<key>` on the `/ui/` URL are forwarded to the WebSocket
+  handshake when the deployment requires admin authentication (local/controlled use only: the
+  token appears in browser history and proxy logs; production should inject it at the gateway)
 
-Scene: a central **Memory Core** (violet icosahedron), a **Governance Ring** (amber torus), four
-**Agent nodes** (Supervisor / Logistics / AfterSales / Shopping) and event particles that fly
-from an agent to the core (memory), to the ring (governance) or stay local (tool call).
-Three.js is vendored under `web/vendor/`, so the page renders offline.
+The console shows five live counters (Agent 运行 / 治理阻断 / 记忆事件 / 工具调用 / Token 用量),
+an event stream with per-event status, the agent runtime and the four governance gates. The
+Three.js vendor bundle and animation loop were removed on purpose.
 
 ![UI preview](docs/ui-preview.png)
 
