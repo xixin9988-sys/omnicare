@@ -18,6 +18,7 @@ services:
   api:
     environment:
       APP_ENV: production
+      DEMO_MODE: "false"
       AUTH_MODE: ${AUTH_MODE:-jwt}
       # Required (>=32 chars) when AUTH_MODE=jwt; OIDC deployments use AUTH_JWKS_URL instead.
       AUTH_SECRET: ${AUTH_SECRET:-}

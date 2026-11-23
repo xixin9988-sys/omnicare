@@ -7,6 +7,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY app ./app
+COPY web ./web
 RUN pip install --upgrade pip && pip install .
 
 RUN mkdir -p /app/data
