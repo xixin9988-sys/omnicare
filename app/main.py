@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
+from app.api.demo_routes import router as demo_router
 from app.api.routes import router
 from app.core.config import get_settings
 from app.core.db import SessionLocal, init_db
@@ -16,6 +17,7 @@ from app.integrations.n8n import N8NClient
 from app.memory.factory import create_memory_adapter
 from app.models.entities import Order, Product, User
 from app.providers.factory import create_provider
+from app.services.demo import DemoService
 from app.services.supervisor import AgentSupervisor
 from app.tools.ecommerce import build_registry
 
@@ -96,6 +98,9 @@ async def lifespan(app: FastAPI):
         registry=build_registry(),
         n8n=N8NClient(settings),
     )
+    # The 60-second demo has its own deterministic guard (configured high-value threshold) and
+    # in-process run state; only the DB/policy/event stack is shared with the supervisor.
+    app.state.demo_service = DemoService(settings)
     yield
 
 
@@ -109,6 +114,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 app.include_router(router, prefix=settings.api_prefix)
+app.include_router(demo_router, prefix=settings.api_prefix)
 
 
 @app.get("/health", include_in_schema=False)

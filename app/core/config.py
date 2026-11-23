@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import lru_cache
 
 from pydantic import Field
@@ -33,6 +34,15 @@ class Settings(BaseSettings):
     demo_user_id: str = "demo_user_001"
     admin_api_key: str = ""
 
+    # Deterministic 60-second demo (app/services/demo.py). ``DEMO_MODE=true`` forces it on
+    # for the public compose sandbox; local/dev/test enable it automatically.
+    demo_mode: bool = False
+    demo_order_id: str = "ORD-001"
+    demo_order_total: Decimal = Decimal("120000.00")
+    demo_refund_amount: Decimal = Decimal("100000.00")
+    demo_high_value_threshold: Decimal = Decimal("10000.00")
+    demo_operator_id: str = "demo_operator"
+
     # Authentication. ``dev`` trusts X-User-Id and is refused when APP_ENV=production.
     # ``token`` is the legacy self-issued HMAC bearer mode (refused in production).
     # ``jwt``/``oidc`` verify OIDC-style JWTs from AUTH_SECRET or a public key/JWKS.
@@ -58,6 +68,11 @@ class Settings(BaseSettings):
     # Scopes an MCP client token must carry (space/comma separated).
     mcp_required_scopes: str = "omnicare.read"
     log_level: str = "INFO"
+
+    @property
+    def demo_enabled(self) -> bool:
+        """The demo is on when forced (public sandbox) or in the local/dev/test environments."""
+        return self.demo_mode or (self.app_env.strip().lower() in {"local", "dev", "test"})
 
     @property
     def allowed_origins(self) -> list[str]:

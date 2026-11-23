@@ -8,6 +8,11 @@ class GuardDecision:
     decision: str
     reason_code: str
     detail: str = ""
+    # Optional policy-rule attribution (the mem-guard rule that fired, if any). Defaults keep
+    # the historical four-positional-argument construction working.
+    rule_id: str = ""
+    rule_label: str = ""
+    matched_rules: tuple[str, ...] = ()
 
 
 class GovernancePort(Protocol):
