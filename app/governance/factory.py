@@ -13,7 +13,10 @@ def create_governance_adapter(settings: Settings):
     if backend == "local":
         from app.governance.local_guard import LocalPolicyGuard
 
-        return LocalPolicyGuard(settings.mem_guard_policy_version)
+        # The same high-value rule the 60-second demo exercises also protects the chat path in
+        # demo environments; production keeps the historical behavior unless DEMO_MODE=true.
+        threshold = settings.demo_high_value_threshold if settings.demo_enabled else None
+        return LocalPolicyGuard(settings.mem_guard_policy_version, threshold)
     if backend == "memguard":
         from app.governance.memguard_adapter import MemGuardAdapter
 

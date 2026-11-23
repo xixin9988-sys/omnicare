@@ -1,0 +1,97 @@
+<!-- Synthelix case-section snippet · paste this block into your landing page's case area.
+     Assets are next to this file: omncare-60s-case.png, omncare-60s-demo.gif / .mp4.
+     Point the CTA at your deployed demo URL (default: /ui/demo.html). -->
+<section class="synthelix-case" aria-labelledby="case-title">
+  <style>
+    .synthelix-case {
+      --ink: #1d1d1f; --muted: #6e6e73; --line: rgba(0, 0, 0, .08);
+      --violet: #6a00ff; --brown: #654321; --soft: #f5f5f7;
+      background: #fff; color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI",
+        "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      padding: 88px 32px; box-sizing: border-box;
+    }
+    .synthelix-case * { box-sizing: border-box; }
+    .synthelix-case .inner { max-width: 1180px; margin: 0 auto; }
+    .synthelix-case .eyebrow {
+      margin: 0 0 18px; font-size: 11px; font-weight: 600;
+      letter-spacing: .24em; text-transform: uppercase; color: #86868b;
+    }
+    .synthelix-case h2 {
+      margin: 0; max-width: 820px; font-size: clamp(32px, 4.6vw, 56px);
+      line-height: 1.08; letter-spacing: -.035em; font-weight: 700;
+    }
+    .synthelix-case .lede {
+      margin: 20px 0 0; max-width: 620px; font-size: 16px; line-height: 1.7; color: var(--muted);
+    }
+    .synthelix-case .grid {
+      display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .75fr);
+      gap: 20px; align-items: stretch; margin-top: 44px;
+    }
+    .synthelix-case .shot {
+      display: block; width: 100%; height: 100%; object-fit: cover;
+      border: 1px solid var(--line); border-radius: 20px; background: var(--soft);
+    }
+    .synthelix-case .panel {
+      display: flex; flex-direction: column; justify-content: space-between;
+      border: 1px solid var(--line); border-radius: 20px; padding: 26px;
+    }
+    .synthelix-case .panel h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .synthelix-case ol { list-style: none; margin: 20px 0 0; padding: 0; }
+    .synthelix-case li {
+      display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px;
+      padding: 12px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.5;
+    }
+    .synthelix-case li:first-child { border-top: 0; padding-top: 0; }
+    .synthelix-case li b { display: block; font-weight: 600; }
+    .synthelix-case li span { color: var(--muted); font-size: 12px; }
+    .synthelix-case .idx { color: #86868b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .synthelix-case .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+    .synthelix-case .btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px;
+      border-radius: 999px; font-size: 13px; font-weight: 600; text-decoration: none;
+      border: 1px solid var(--line); color: var(--ink); background: #fff;
+    }
+    .synthelix-case .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .synthelix-case .foot {
+      margin-top: 22px; font-size: 11.5px; color: #86868b;
+    }
+    .synthelix-case code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em;
+    }
+    @media (max-width: 820px) {
+      .synthelix-case { padding: 64px 20px; }
+      .synthelix-case .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+  <div class="inner">
+    <p class="eyebrow">CASE · 60 SECOND DEMO</p>
+    <h2 id="case-title">一次被拦住的退款，如何被安全放行。</h2>
+    <p class="lede">
+      OmniCare 的 MCP 工具先查物流、再申请 100,000 元退款；策略引擎当场拦截并高亮命中的
+      high-value-refund 规则；转人工后由 demo_operator 审批放行。四步全部写入带 HMAC 签名与
+      provenance 的事件流，可原样回放。
+    </p>
+    <div class="grid">
+      <img class="shot" src="omncare-60s-case.png" alt="OmniCare 60 秒 Demo：策略拦截、人工审批与签名回放" loading="lazy" />
+      <div class="panel">
+        <div>
+          <h3>60 秒脚本</h3>
+          <ol>
+            <li><span class="idx">01</span><div><b>查物流</b><span>MCP 只读工具 check_logistics 返回运单轨迹。</span></div></li>
+            <li><span class="idx">02</span><div><b>策略拦截</b><span>100,000 元达到高额阈值，rule high-value-refund 命中，红条隔离。</span></div></li>
+            <li><span class="idx">03</span><div><b>转人工</b><span>人工接管后创建待审退款单（pending_review）。</span></div></li>
+            <li><span class="idx">04</span><div><b>批准放行</b><span>demo_operator 审批通过，绿条 + 审计迁移写入签名事件。</span></div></li>
+          </ol>
+        </div>
+        <div>
+          <div class="actions">
+            <a class="btn primary" href="/ui/demo.html" target="_blank" rel="noopener">打开实时 Demo</a>
+            <a class="btn" href="omncare-60s-demo.mp4">下载 60s 录屏</a>
+          </div>
+          <p class="foot">每一步：<code>HMAC-SHA256</code> 签名 + <code>omnicare://demo/runs/&lt;id&gt;/steps/&lt;n&gt;</code> provenance；回放时服务端重算校验。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

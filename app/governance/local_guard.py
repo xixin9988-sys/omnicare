@@ -11,8 +11,19 @@ from app.services.refunds import available_refund, lock_clause
 class LocalPolicyGuard:
     """Deterministic demo policy. Replace this adapter with the real mem-guard SDK adapter."""
 
-    def __init__(self, policy_version: str = "omnicare-demo-1") -> None:
+    def __init__(
+        self,
+        policy_version: str = "omnicare-demo-1",
+        high_value_refund_threshold: Decimal | None = None,
+    ) -> None:
         self.policy_version = policy_version
+        # ``None`` keeps the historical behavior (no amount-based rule); the demo wires the
+        # configured threshold explicitly so the same guard drives the 60-second scenario.
+        self.high_value_refund_threshold = (
+            Decimal(str(high_value_refund_threshold))
+            if high_value_refund_threshold is not None
+            else None
+        )
 
     def validate_memory(self, memory) -> GuardDecision:
         state = (getattr(memory, "state", "unknown") or "unknown").upper()
@@ -103,6 +114,24 @@ class LocalPolicyGuard:
         if order.status in {"cancelled", "closed"}:
             return GuardDecision(
                 False, "reject", "order_not_refundable", "当前订单状态不允许退款申请。"
+            )
+        # High-value refunds need a human in the loop. This runs after the authoritative
+        # business checks so an unaffordable request is still rejected, never "escalated".
+        # ``human_escalated`` is set by the caller that already handed the case to an operator.
+        if (
+            self.high_value_refund_threshold is not None
+            and requested >= self.high_value_refund_threshold
+            and not context.get("human_escalated")
+        ):
+            return GuardDecision(
+                False,
+                "quarantine",
+                "high_value_refund_requires_human",
+                f"退款金额 {requested:.2f} 达到高额退款阈值 "
+                f"{self.high_value_refund_threshold:.2f}，必须由人工审批。",
+                rule_id="high-value-refund",
+                rule_label="高额退款必须人工审批",
+                matched_rules=("high-value-refund",),
             )
         return GuardDecision(True, "allow", "refund_within_authoritative_limit")
 

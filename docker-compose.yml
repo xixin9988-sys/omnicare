@@ -1,15 +1,31 @@
+# One-command 60-second demo:
+#   docker compose up --build
+#   open http://localhost:8000/ui/demo.html
+# The API also serves the white Synthelix console at /ui/.
+# This stack is a public sandbox with demo/mock data only: AUTH_MODE=dev is for the
+# demo identity, DEMO_MODE enables the deterministic ORD-001 scenario, and no .env file is
+# required. Do not put real customer data here; use docker-compose.prod.yml (JWT/OIDC) for that.
 services:
   api:
     build: .
-    env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:///./data/omnicare.db}
+      APP_ENV: local
+      DEMO_MODE: "true"
+      AUTH_MODE: dev
+      DATABASE_URL: sqlite+aiosqlite:///./data/omnicare.db
+      LLM_PROVIDER: mock
+      MEMORY_BACKEND: local
+      GOVERNANCE_BACKEND: local
     ports:
-      # Loopback only. AUTH_MODE=dev trusts X-User-Id, so this demo stack must never be
-      # reachable from the LAN. Anything public must use docker-compose.prod.yml (JWT/OIDC auth).
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     restart: unless-stopped
 
   # Optional workflow engine. Start with: docker compose --profile automation up --build

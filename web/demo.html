@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OmniCare 60s Demo · Synthelix</title>
+  <meta
+    name="description"
+    content="60 秒看懂一次被治理策略拦住的退款：MCP 工具调用、策略拦截、人工审批与可验证的签名回放。"
+  />
+  <meta name="theme-color" content="#ffffff" />
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23000000'/%3E%3Cstop offset='1' stop-color='%236a00ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cpath d='M20 42V22h6l12 20h6V22' fill='none' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+  />
+  <link rel="stylesheet" href="./css/demo.css" />
+</head>
+<body class="demo-body">
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="studio" href="/" aria-label="Synthelix Studio" data-console-home>
+        <span class="studio-word"><span class="word-gradient">Synth</span><span class="word-brown">elix</span></span>
+        <span class="studio-label">Studio</span>
+      </a>
+
+      <div class="product">
+        <span class="product-name">OmniCare</span>
+        <span class="product-tag">Governed commerce agents</span>
+      </div>
+
+      <nav class="nav" aria-label="主导航">
+        <a class="nav-link" href="/ui/" data-console-home>控制台</a>
+        <a class="nav-link is-active" href="./demo.html" aria-current="page">60s Demo</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="demo-main wrap">
+    <section class="hero" aria-labelledby="demo-title">
+      <p class="eyebrow">SYNTHELIX STUDIO · 60 SECOND DEMO</p>
+      <div class="hero-row">
+        <div class="hero-copy">
+          <h1 id="demo-title">60 秒，看清一次被拦住的退款。</h1>
+          <p class="lede" id="hero-lede">
+            Agent 通过 MCP 调用工具，治理策略拦下超额退款，人工审批放行，每一步都留下可验证的签名。
+          </p>
+        </div>
+        <ul class="hero-tags" aria-label="Demo 包含的能力">
+          <li>MCP 工具链</li>
+          <li>策略拦截</li>
+          <li>人工审批</li>
+          <li>签名回放</li>
+        </ul>
+      </div>
+    </section>
+
+    <noscript><p class="noscript">本 Demo 需要启用 JavaScript 才能运行。</p></noscript>
+
+    <section class="demo-grid" aria-label="60 秒 Demo 操作台">
+      <!-- ---------------------------------------------------------- left: MCP -->
+      <aside class="panel mcp" aria-labelledby="mcp-title">
+        <header class="panel-head">
+          <div class="panel-heading">
+            <p class="kicker">MCP SERVER</p>
+            <h2 id="mcp-title">OmniCare Business Tools</h2>
+          </div>
+          <span class="conn" id="mcp-conn" data-state="connecting" role="status" aria-live="polite">
+            <span class="conn-dot" aria-hidden="true"></span>
+            <span id="mcp-conn-text">连接中</span>
+          </span>
+        </header>
+
+        <p class="mcp-meta">
+          <code>streamable-http</code>
+          <span class="dot-sep" aria-hidden="true">·</span>
+          <code id="mcp-endpoint">/mcp</code>
+        </p>
+
+        <ul class="tool-list" id="tool-list" aria-live="polite">
+          <li class="tool-skeleton" aria-hidden="true"></li>
+          <li class="tool-skeleton" aria-hidden="true"></li>
+        </ul>
+
+        <div class="human" id="human-row" data-state="idle">
+          <span class="human-avatar" aria-hidden="true">人</span>
+          <div class="human-body">
+            <p class="human-name">人工审批通道</p>
+            <p class="human-sub">demo_operator · 四眼原则</p>
+          </div>
+          <span class="human-state" id="human-state">待触发</span>
+        </div>
+
+        <p class="panel-note">工具调用由服务端签发 HMAC-SHA256 事件，前端不持有密钥。</p>
+      </aside>
+
+      <!-- ---------------------------------------------------------- center: stage -->
+      <section class="panel stage" aria-labelledby="stage-title">
+        <header class="stage-head">
+          <div class="panel-heading">
+            <p class="kicker">SCENARIO · GOVERNED REFUND</p>
+            <h2 id="stage-title">高额退款 · 人工复核</h2>
+          </div>
+          <span class="run-chip" id="run-chip" hidden>RUN · —</span>
+        </header>
+
+        <div class="bubble-row">
+          <span class="avatar" aria-hidden="true">客</span>
+          <div class="bubble">
+            <p class="bubble-meta">用户 · demo_user_001</p>
+            <p class="bubble-text" id="user-message">给 ORD-001 退 100000 元。</p>
+          </div>
+        </div>
+
+        <dl class="order-grid" aria-label="订单信息">
+          <div class="order-cell">
+            <dt>订单</dt>
+            <dd><span id="order-id">ORD-001</span> <span class="order-status" id="order-status">已发货</span></dd>
+          </div>
+          <div class="order-cell">
+            <dt>订单金额</dt>
+            <dd id="order-total">¥120,000.00</dd>
+          </div>
+          <div class="order-cell">
+            <dt>退款申请</dt>
+            <dd class="order-amount" id="order-amount">¥100,000.00</dd>
+          </div>
+          <div class="order-cell order-wide">
+            <dt>物流</dt>
+            <dd id="order-logistics">顺丰速运 · SF-ORD-001</dd>
+          </div>
+        </dl>
+
+        <ol class="chips" id="step-chips" aria-label="四个执行步骤">
+          <li class="chip" data-state="pending">
+            <span class="chip-index" aria-hidden="true">1</span>
+            <span class="chip-label">查物流</span>
+            <span class="chip-status">待执行</span>
+          </li>
+          <li class="chip" data-state="pending">
+            <span class="chip-index" aria-hidden="true">2</span>
+            <span class="chip-label">申请退款</span>
+            <span class="chip-status">待执行</span>
+          </li>
+          <li class="chip" data-state="pending">
+            <span class="chip-index" aria-hidden="true">3</span>
+            <span class="chip-label">转人工</span>
+            <span class="chip-status">待执行</span>
+          </li>
+          <li class="chip" data-state="pending">
+            <span class="chip-index" aria-hidden="true">4</span>
+            <span class="chip-label">批准放行</span>
+            <span class="chip-status">待执行</span>
+          </li>
+        </ol>
+
+        <div class="banner" id="banner" data-state="neutral" role="status" aria-live="polite">
+          <div class="banner-head">
+            <span class="banner-flag" id="banner-flag">READY</span>
+            <h3 class="banner-title" id="banner-title">准备就绪</h3>
+          </div>
+          <p class="banner-sub" id="banner-sub">
+            点击「开始 60 秒 Demo」，Agent 将通过 MCP 真实调用工具，并把每一步写入签名事件。
+          </p>
+          <div class="banner-body" id="banner-body"></div>
+        </div>
+
+        <div class="progress">
+          <div class="progress-meta">
+            <span id="progress-time">00:00 / 01:00</span>
+            <span id="progress-phase">等待开始</span>
+          </div>
+          <div
+            class="progress-track"
+            id="progress-track"
+            role="progressbar"
+            aria-label="Demo 进度"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <span class="progress-fill" id="progress-fill"></span>
+            <span class="progress-ticks" id="progress-ticks" aria-hidden="true"></span>
+          </div>
+        </div>
+        <p class="narration" id="narration" data-state="idle" role="status" aria-live="polite">
+          准备就绪。点击开始，Agent 将通过 MCP 真实调用工具。
+        </p>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="btn-start" type="button">开始 60 秒 Demo</button>
+          <button class="btn btn-ghost" id="btn-reset" type="button" disabled>重置</button>
+          <label class="auto-toggle" for="auto-toggle">
+            <input type="checkbox" id="auto-toggle" checked />
+            <span class="switch" aria-hidden="true"></span>
+            <span class="auto-label">自动演示<small>录屏用</small></span>
+          </label>
+        </div>
+
+        <div class="step-actions">
+          <p class="step-caption">步骤控制<span id="step-caption">开始后可逐步执行</span></p>
+          <div class="step-buttons">
+            <button class="btn btn-step" id="btn-logistics" type="button" data-step="logistics" disabled>
+              查物流
+            </button>
+            <button class="btn btn-step" id="btn-refund" type="button" data-step="refund" disabled>
+              申请退款
+            </button>
+            <button class="btn btn-step" id="btn-escalate" type="button" data-step="escalate" disabled>
+              转人工
+            </button>
+            <button class="btn btn-step btn-approve" id="btn-approve" type="button" data-step="approve" disabled>
+              批准放行
+            </button>
+            <button class="btn btn-step btn-replay" id="btn-replay" type="button" disabled>回放</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------- right: timeline -->
+      <aside class="panel timeline" aria-labelledby="timeline-title">
+        <header class="panel-head">
+          <div class="panel-heading">
+            <p class="kicker">REPLAY · SIGNED TIMELINE</p>
+            <h2 id="timeline-title">时间线与签名</h2>
+          </div>
+          <span class="verified" id="verified" data-state="idle">
+            <span class="verified-dot" aria-hidden="true"></span>
+            <span id="verified-text">待回放</span>
+          </span>
+        </header>
+
+        <p class="timeline-note">每一步都写入签名事件；回放时服务端重新计算 HMAC 并校验。</p>
+
+        <ol class="timeline-list" id="timeline" aria-live="polite"></ol>
+
+        <p class="timeline-foot" id="timeline-foot">
+          签名算法 HMAC-SHA256 · 完整签名与 provenance JSON 见每步详情。
+        </p>
+      </aside>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p>
+        <span class="footer-word"><span class="word-gradient">Synth</span><span class="word-brown">elix</span></span>
+        Studio · OmniCare 60s Demo
+      </p>
+      <p class="footer-note">DEMO_MODE 确定性场景 · 四步全部由真实 API 驱动，签名由服务端生成。</p>
+    </div>
+  </footer>
+
+  <script src="./js/demo.js" defer></script>
+</body>
+</html>

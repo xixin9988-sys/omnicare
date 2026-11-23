@@ -56,3 +56,57 @@ def test_app_mounts_ui_and_redirects_root() -> None:
     main = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text(encoding="utf-8")
     assert re.search(r'mount\(\s*"/ui"', main)
     assert 'RedirectResponse(url="/ui/")' in main
+
+
+DEMO_FILES = ("demo.html", "css/demo.css", "js/demo.js")
+
+
+def _read(name: str) -> str:
+    return (WEB / name).read_text(encoding="utf-8")
+
+
+def test_demo_page_exists_and_is_dependency_free() -> None:
+    for name in DEMO_FILES:
+        assert (WEB / name).is_file(), f"{name} must ship with the 60s demo page"
+
+    html = _read("demo.html")
+    css = _read("css/demo.css")
+    js = _read("js/demo.js")
+
+    assert "./css/demo.css" in html, "the demo page has its own stylesheet"
+    assert "./js/demo.js" in html, "the demo page has its own script"
+    assert not re.search(r'(?:src|href)="(?:https?:)?//', html), "no external resources"
+
+    combined = html + css + js
+    for banned in (
+        "three.module.js",
+        "OrbitControls",
+        "cdn.",
+        "unpkg",
+        "jsdelivr",
+        "fonts.googleapis",
+        "requestAnimationFrame",
+    ):
+        assert banned not in combined
+    assert "@import" not in css
+    # Server payloads are inserted as text nodes, never as markup.
+    assert "innerHTML" not in js
+    assert "textContent" in js
+
+
+def test_demo_page_drives_the_real_api_contract() -> None:
+    js = _read("js/demo.js")
+    assert "/api/v1" in js
+    assert "/demo/manifest" in js
+    assert "/demo/runs" in js
+    assert "/steps/" in js
+    assert "/replay" in js
+    assert "autoplay" in js
+    assert "embed" in js
+    # A disabled backend is reported as such; the page never fakes a local run.
+    assert "demo_disabled" in js
+
+
+def test_console_links_to_the_demo_page() -> None:
+    html = _read("index.html")
+    assert "demo.html" in html, "the console must link to the 60s demo page"

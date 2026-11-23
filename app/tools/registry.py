@@ -24,6 +24,9 @@ class ToolContext:
     db: Any
     governance: GovernancePort
     emit_event: Callable[[str, str, str, dict | None], Awaitable[None]] | None = None
+    # Set by a caller that already routed the case to a human operator (for example the demo
+    # escalation step); guards may relax rules that exist only to force human review.
+    human_escalated: bool = False
 
 
 @dataclass(slots=True)
@@ -69,7 +72,11 @@ class ToolRegistry:
             decision = await context.governance.authorize_action(
                 action=name,
                 args=args.model_dump(mode="json"),
-                context={"user_id": context.user_id, "session_id": context.session_id},
+                context={
+                    "user_id": context.user_id,
+                    "session_id": context.session_id,
+                    "human_escalated": context.human_escalated,
+                },
                 db=context.db,
             )
             if not decision.allowed:
@@ -85,7 +92,15 @@ class ToolRegistry:
                 )
                 if context.emit_event:
                     await context.emit_event(
-                        "tool_denied", name, "blocked", {"reason_code": decision.reason_code}
+                        "tool_denied",
+                        name,
+                        "blocked",
+                        {
+                            "reason_code": decision.reason_code,
+                            "rule_id": decision.rule_id,
+                            "rule_label": decision.rule_label,
+                            "matched_rules": list(decision.matched_rules),
+                        },
                     )
                 return ToolResult(
                     False,
@@ -93,6 +108,9 @@ class ToolRegistry:
                         "governance_decision": decision.decision,
                         "reason_code": decision.reason_code,
                         "detail": decision.detail,
+                        "rule_id": decision.rule_id,
+                        "rule_label": decision.rule_label,
+                        "matched_rules": list(decision.matched_rules),
                     },
                     decision.reason_code,
                     "操作被安全治理策略拦截。",
