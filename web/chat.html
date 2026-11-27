@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OmniCare · 客服对话</title>
+    <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/ui/css/style.css" />
+    <link rel="stylesheet" href="/ui/css/chat.css" />
+  </head>
+  <body class="chat-page">
+    <header class="chat-top">
+      <div class="wrap chat-top-inner">
+        <a class="chat-brand" href="/ui/">
+          OmniCare
+          <span>客服对话</span>
+        </a>
+        <div class="chat-status" id="status" data-state="connecting" role="status">
+          正在初始化…
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap chat-main">
+      <section class="chat-card" aria-label="客服对话">
+        <div class="chat-banner" id="banner" role="alert" hidden>
+          <div class="chat-banner-text">
+            <strong id="banner-title"></strong>
+            <p id="banner-detail"></p>
+          </div>
+          <button type="button" class="chat-banner-action" id="banner-retry" hidden>
+            重试
+          </button>
+        </div>
+
+        <ol class="chat-log" id="log" aria-live="polite" aria-relevant="additions"></ol>
+
+        <div class="chat-empty" id="empty">
+          <p class="chat-empty-title">问点什么开始对话</p>
+          <p class="chat-empty-sub">
+            回答只使用业务数据库与你的长期记忆；检索不到时会明确说“没有找到”，而不是猜测。
+          </p>
+          <div class="chat-suggestions" id="suggestions">
+            <button type="button" data-prompt="我的订单 ORD-2026-0001 物流到哪了？">
+              查物流
+            </button>
+            <button type="button" data-prompt="签收后几天内可以退款？">
+              退款政策
+            </button>
+            <button type="button" data-prompt="你们有降噪耳机吗？多少钱？">
+              找商品
+            </button>
+          </div>
+        </div>
+
+        <div class="chat-typing" id="typing" role="status" hidden>
+          <span class="chat-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="typing-text">正在检索记忆并生成回复…</span>
+        </div>
+
+        <form class="chat-compose" id="form" novalidate>
+          <label class="chat-sr" for="message">消息内容</label>
+          <textarea
+            id="message"
+            name="message"
+            rows="2"
+            maxlength="4000"
+            placeholder="输入问题，Enter 发送，Shift+Enter 换行"
+            autocomplete="off"
+          ></textarea>
+          <button type="submit" id="send">发送</button>
+        </form>
+        <p class="chat-hint" id="hint">
+          每次回答都带一个 trace_id；👍/👎 会回传到记忆网关，作为评测集与检索优化的输入。
+        </p>
+      </section>
+
+      <aside class="chat-side" aria-label="说明">
+        <h2>这条链路发生了什么</h2>
+        <ol>
+          <li>身份来自登录 JWT，前端不持有任何模型或向量库密钥。</li>
+          <li>检索请求经 mem-guard 签名租户后进入 NanoMemory 向量库。</li>
+          <li>写入前会做注入与 PII 检查，命中敏感信息的文本先脱敏再入库。</li>
+          <li>回答返回 trace_id，差评可一键进入评测集候选。</li>
+        </ol>
+        <p class="chat-small">
+          记忆服务不可用时，对话会降级为“无长期记忆”回答，并在事件流里留下
+          <code>memory_degraded</code>。
+        </p>
+      </aside>
+    </main>
+
+    <script src="/ui/js/chat.js" defer></script>
+  </body>
+</html>

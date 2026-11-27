@@ -20,10 +20,16 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-flash"
     llm_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
 
+    # memguard_http (production) | nanomemory_http (direct, trusted single tenant) | local (demo)
     memory_backend: str = "local"
     nanomemory_base_url: str = "http://localhost:8101"
     nanomemory_api_key: str = ""
     nanomemory_context_token_budget: int = Field(default=8000, ge=256, le=100000)
+
+    # mem-guard gateway: the only component allowed to assert tenant scope to NanoMemory.
+    memguard_base_url: str = "http://localhost:8080"
+    memguard_service_key: str = ""
+    memguard_timeout_seconds: float = Field(default=8.0, gt=0, le=60)
 
     governance_backend: str = "local"
     mem_guard_policy_version: str = "omnicare-demo-1"

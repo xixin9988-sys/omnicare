@@ -1,8 +1,36 @@
 # OmniCare — Enterprise E-commerce AI Agent Platform (MVP)
 
-> 当前交付是 **Local MVP / architecture baseline**，不是 Production Ready。默认 Mock LLM、SQLite、local memory adapter 与 deterministic local guard，方便无外部密钥启动并验收闭环。
+> **v0.3.0（2026-11-27）记忆底座升级：** 长期记忆改为
+> **OmniCare → mem-guard → NanoMemory 向量库** 的完整链路（签名租户、注入/PII 前置检查、
+> 限流与日预算、哈希链审计、trace_id 反馈闭环）。默认仍是零密钥的本地 demo 后端；
+> 生产 compose 把 `MEMORY_BACKEND` 设为 `memguard_http`；若仍用本地 JSONL 记忆，启动自检会给出告警。
 >
-> **v0.2.0（2026-11-22）安全轮：** OIDC/JWT 身份核心、MCP 传输层认证与可信身份上下文（工具不再接收 token 参数）、记忆溯源审计链、NanoMemory provenance/user_id/session 契约对齐。细节见 [SECURITY_FIXES.md](SECURITY_FIXES.md) 的 S-01…S-06 与 [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md)。
+> v0.2.0 安全轮（OIDC/JWT、MCP 认证、记忆溯源）保持有效，细节见
+> [SECURITY_FIXES.md](SECURITY_FIXES.md) 与 [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md)。
+
+## 60 秒看懂
+
+```text
+用户 --JWT--> OmniCare API/BFF --service key + scope--> mem-guard --HMAC 租户签名--> NanoMemory
+                  |                                        |                              |
+              Postgres 业务库                     审计 / 配额 / 反馈              向量 + trace
+```
+
+- **一个能演示也能上生产的产品面**：对话页 `/ui/chat.html`，包含加载中 / 空数据 / 错误 /
+  无权限 / 限流五种状态，以及每条回答下的 👍/👎（带 `trace_id`）。
+- **记忆不再是"存文本"**：NanoMemory 用向量 + BM25 混合检索，检索前在 SQL 层按租户/用户/ACL
+  过滤；mem-guard 负责签名、脱敏、注入检测、限流和审计。
+- **可量化**：NanoMemory 有 44 条评测集（29.5% 对抗样本），当前离线基线 Recall@5 0.871、
+  拒答准确率 1.000；成本模型在 [docs/COST_MODEL.md](docs/COST_MODEL.md)。
+
+```bash
+# 本地零密钥（demo 记忆后端）
+uvicorn app.main:app --port 8000
+open http://127.0.0.1:8000/ui/chat.html
+
+# 生产形状（OmniCare + mem-guard + NanoMemory + Postgres）
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
 
 ## 这是什么
 
@@ -31,7 +59,8 @@ python -m app.mcp_server           # 终端 2：MCP server，监听 9000
 - 工具执行前治理：订单归属、可退金额上限、订单状态；退款只创建 `pending_review` 申请，
   由管理员经 `POST /api/v1/refunds/{id}/decision` 审批（`approve`/`reject`/`settle`，四眼原则，
   逐条审计），**不触发真实打款**。
-- MemoryPort 适配层：本地 JSONL demo adapter，及对齐 NanoMemory 0.2.1 的 HTTP adapter（服务端 session、`provenance`、`user_id` 过滤）。
+- MemoryPort 适配层：生产走 `memguard_http`（签名租户、脱敏、限流、审计、trace_id）；保留 `nanomemory_http` 直连（受信单租户/联调）与 `local` JSONL（仅 demo，生产 preflight 告警）。
+- 对话页 `/ui/chat.html`：加载中/空/错误/无权限/限流状态齐全，👍/👎 关联 `trace_id` 回传 mem-guard；记忆不可用时对话降级并记录 `memory_degraded`。
 - 记忆溯源审计链：偏好记忆写入时生成 HMAC attestation，检索前校验；管理员可通过 `GET /api/v1/memories/{id}/provenance` 查看来源。
 - 身份：`AUTH_MODE=jwt|oidc` 校验 OIDC 风格 JWT（算法固定、iss/aud、租户白名单、jti 撤销、scope）；生产启动自检拒绝 `dev`/legacy `token` 模式。
 - GovernancePort 适配层：本地确定性演示策略；替换为你的 mem-guard SDK adapter 时不需要改 Supervisor。

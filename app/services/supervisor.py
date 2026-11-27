@@ -13,7 +13,7 @@ from app.core.config import Settings
 from app.core.events import broker
 from app.governance.ports import GovernancePort, GuardDecision
 from app.integrations.n8n import N8NClient
-from app.memory.ports import MemoryPort
+from app.memory.ports import MemoryBackendError, MemoryPort
 from app.models.entities import AgentEvent, AgentRun, ChatMessage, GovernanceIncident
 from app.providers.base import LLMProvider
 from app.services.memory_provenance import (
@@ -140,7 +140,7 @@ class AgentSupervisor:
                 },
             )
             return await self._finish(
-                db, run, session_id, reply, "blocked", "governance_agent", started
+                db, run, session_id, reply, "blocked", "governance_agent", started, trace_id=None
             )
 
         await self._emit(
@@ -151,9 +151,31 @@ class AgentSupervisor:
             agent="nanomemory",
             status="running",
         )
-        memories = await self.memory.retrieve(
-            user_id=user_id, session_id=session_id, query=message, limit=6
-        )
+        memory_degraded = False
+        memory_trace_id: str | None = None
+        try:
+            memories = await self.memory.retrieve(
+                user_id=user_id,
+                session_id=session_id,
+                query=message,
+                limit=6,
+                tenant_id=tenant_id,
+            )
+            memory_trace_id = getattr(self.memory, "last_trace_id", None)
+        except MemoryBackendError as exc:
+            # Degrade, never fail the conversation: the agent can still answer from the
+            # authoritative business database (orders/refunds) without long-term memory.
+            memories = []
+            memory_degraded = True
+            await self._emit(
+                db,
+                run_id=run_id,
+                session_id=session_id,
+                event_type="memory_degraded",
+                agent="mem_guard",
+                status="degraded",
+                payload={"reason_code": exc.code, "http_status": exc.status},
+            )
         trusted_memories = []
         for memory in memories:
             # Read-side half of the provenance chain: a memory without a matching, untampered
@@ -194,6 +216,8 @@ class AgentSupervisor:
             payload={
                 "accepted": len(trusted_memories),
                 "rejected": len(memories) - len(trusted_memories),
+                "trace_id": memory_trace_id,
+                "degraded": memory_degraded,
             },
         )
 
@@ -308,41 +332,65 @@ class AgentSupervisor:
             # The source_ref is the stable pointer the audit trail starts from; it names the
             # exact conversation turn but carries no secret material.
             source_ref = f"omnicare://sessions/{session_id}/runs/{run_id}"
-            record = await self.memory.remember_preference(
-                user_id=user_id,
-                session_id=session_id,
-                content=preference_match.group(0).strip(),
-                source="user_explicit_statement",
-                source_ref=source_ref,
-                created_by="omnicare",
-            )
-            # Same transaction as the run: a committed memory always has its attestation row.
-            await record_memory_provenance(
-                db,
-                memory=record,
-                user_id=user_id,
-                session_id=session_id,
-                run_id=run_id,
-                tenant_id=tenant_id,
-                backend=self.memory_backend,
-                secret=self.attestation_secret,
-            )
-            await self._emit(
-                db,
-                run_id=run_id,
-                session_id=session_id,
-                event_type="memory_written",
-                agent="nanomemory",
-                status="completed",
-                payload={
-                    "memory_id": record.id,
-                    "memory_type": record.memory_type,
-                    "source_ref": source_ref,
-                    "backend": self.memory_backend,
-                },
-            )
+            try:
+                record = await self.memory.remember_preference(
+                    user_id=user_id,
+                    session_id=session_id,
+                    content=preference_match.group(0).strip(),
+                    source="user_explicit_statement",
+                    source_ref=source_ref,
+                    created_by="omnicare",
+                    tenant_id=tenant_id,
+                )
+            except MemoryBackendError as exc:
+                # A memory outage must not lose the conversation; the preference is simply not
+                # persisted and the failure is visible as an event.
+                await self._emit(
+                    db,
+                    run_id=run_id,
+                    session_id=session_id,
+                    event_type="memory_write_failed",
+                    agent="mem_guard",
+                    status="degraded",
+                    payload={"reason_code": exc.code, "http_status": exc.status},
+                )
+            else:
+                # Same transaction as the run: a committed memory always has its attestation row.
+                await record_memory_provenance(
+                    db,
+                    memory=record,
+                    user_id=user_id,
+                    session_id=session_id,
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    backend=self.memory_backend,
+                    secret=self.attestation_secret,
+                )
+                await self._emit(
+                    db,
+                    run_id=run_id,
+                    session_id=session_id,
+                    event_type="memory_written",
+                    agent="nanomemory",
+                    status="completed",
+                    payload={
+                        "memory_id": record.id,
+                        "memory_type": record.memory_type,
+                        "source_ref": source_ref,
+                        "backend": self.memory_backend,
+                    },
+                )
 
-        return await self._finish(db, run, session_id, reply, "completed", route.agent, started)
+        return await self._finish(
+            db,
+            run,
+            session_id,
+            reply,
+            "completed",
+            route.agent,
+            started,
+            trace_id=memory_trace_id,
+        )
 
     async def _record_incident(self, db, run_id, user_id, category, decision) -> None:
         db.add(
@@ -356,7 +404,9 @@ class AgentSupervisor:
             )
         )
 
-    async def _finish(self, db, run, session_id, reply, status, agent, started) -> dict:
+    async def _finish(
+        self, db, run, session_id, reply, status, agent, started, *, trace_id: str | None = None
+    ) -> dict:
         latency = int((time.perf_counter() - started) * 1000)
         run.status = status
         run.latency_ms = latency
@@ -381,6 +431,7 @@ class AgentSupervisor:
             "agent": agent,
             "status": status,
             "reply": reply,
+            "trace_id": trace_id,
             "usage": {
                 "prompt_tokens": run.prompt_tokens,
                 "completion_tokens": run.completion_tokens,

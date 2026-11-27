@@ -31,6 +31,9 @@ class ChatResponse(BaseModel):
     agent: str
     status: str
     reply: str
+    trace_id: str | None = Field(
+        default=None, description="Memory gateway trace id used for answer feedback"
+    )
     usage: dict[str, Any] = Field(default_factory=dict)
 
 

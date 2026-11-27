@@ -167,6 +167,21 @@ def check_settings(settings) -> PreflightReport:
             f"AUTH_SECRET must be at least {MIN_SECRET_LENGTH} characters when AUTH_MODE=token.",
         )
 
+    memory_backend = _text(settings, "memory_backend", "local").lower() or "local"
+    if production and memory_backend == "local":
+        issue(
+            "warning",
+            "local_memory_in_production",
+            "MEMORY_BACKEND=local is the demo JSONL adapter: no tenant isolation, no screening, "
+            "no trace ids. Use MEMORY_BACKEND=memguard_http in any real deployment.",
+        )
+    if memory_backend == "memguard_http" and not _text(settings, "memguard_service_key"):
+        required_in_production(
+            "memguard_service_key_missing",
+            "MEMORY_BACKEND=memguard_http requires MEMGUARD_SERVICE_KEY so the gateway can "
+            "authenticate this service.",
+        )
+
     if production and database_url.startswith("sqlite"):
         issue(
             "warning",

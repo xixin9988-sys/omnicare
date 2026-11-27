@@ -1,26 +1,32 @@
-# Production-shaped stack: OIDC/JWT identity, PostgreSQL row locks, no dev identity.
+# Production-shaped stack: OIDC/JWT identity, PostgreSQL, and the full memory chain.
+#
+#   OmniCare  --service key-->  mem-guard  --signed tenant scope-->  NanoMemory
+#       |                           |                                   |
+#    Postgres                 audit/quota/feedback               vector store (SQLite)
 #
 # Pick ONE identity mode:
 #   self-hosted JWT (HS256, strong secret):   AUTH_MODE=jwt  + AUTH_SECRET
 #   external IdP (OIDC, RS256 + JWKS):        AUTH_MODE=oidc + AUTH_JWT_ISSUER + AUTH_JWT_AUDIENCE + AUTH_JWKS_URL
 #
-#   export AUTH_SECRET=$(python -c "import secrets;print(secrets.token_hex(32))")
 #   export POSTGRES_PASSWORD=$(python -c "import secrets;print(secrets.token_hex(24))")
+#   export AUTH_SECRET=$(python -c "import secrets;print(secrets.token_hex(32))")
+#   export MEMGUARD_SERVICE_KEY=$(python -c "import secrets;print(secrets.token_hex(24))")
+#   export MEMGUARD_CONTEXT_SIGNING_KEY=$(python -c "import secrets;print(secrets.token_hex(32))")
+#   export NANOMEMORY_ADMIN_TOKEN=$(python -c "import secrets;print(secrets.token_hex(24))")
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #
-# Issue a demo token on a trusted machine (never in production logs):
-#   python -m app.auth_cli issue-token --user demo_user_001 --role user --scopes omnicare.read
+# The two memory images are built from sibling source trees (../nanomemory, ../mem-guard).
+# Publish them to your registry and replace build: with image: if you deploy from a single repo.
 #
-# The app refuses to start with APP_ENV=production + AUTH_MODE=dev or with the legacy
-# self-signed AUTH_MODE=token (see app/core/preflight.py): a missing AUTH_MODE cannot
-# silently re-enable X-User-Id identity.
+# The app refuses to start with APP_ENV=production + AUTH_MODE=dev, and mem-guard refuses to
+# start in production without its service key and signing key. Missing secrets fail the boot,
+# not the first request.
 services:
   api:
     environment:
       APP_ENV: production
       DEMO_MODE: "false"
       AUTH_MODE: ${AUTH_MODE:-jwt}
-      # Required (>=32 chars) when AUTH_MODE=jwt; OIDC deployments use AUTH_JWKS_URL instead.
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-https://omnicare.example.com}
       AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE:-omnicare-api}
@@ -31,11 +37,62 @@ services:
       MCP_REQUIRED_SCOPES: ${MCP_REQUIRED_SCOPES:-omnicare.read}
       MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-http://127.0.0.1:9000/mcp}
       DATABASE_URL: postgresql+asyncpg://omnicare:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/omnicare
+      # The production memory path: every call goes through the governance gateway.
+      MEMORY_BACKEND: memguard_http
+      MEMGUARD_BASE_URL: http://memguard:8080
+      MEMGUARD_SERVICE_KEY: ${MEMGUARD_SERVICE_KEY:?MEMGUARD_SERVICE_KEY is required}
+      MEMGUARD_TIMEOUT_SECONDS: "8"
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      memguard:
+        condition: service_healthy
+
+  memguard:
+    build: ../mem-guard
+    environment:
+      MEM_GUARD_ENVIRONMENT: production
+      MEM_GUARD_NANOMEMORY_URL: http://nanomemory:8000
+      MEM_GUARD_SERVICE_API_KEY: ${MEMGUARD_SERVICE_KEY:?MEMGUARD_SERVICE_KEY is required}
+      MEM_GUARD_CONTEXT_SIGNING_KEY: ${MEMGUARD_CONTEXT_SIGNING_KEY:?MEMGUARD_CONTEXT_SIGNING_KEY is required}
+      MEM_GUARD_NANOMEMORY_ADMIN_TOKEN: ${NANOMEMORY_ADMIN_TOKEN:?NANOMEMORY_ADMIN_TOKEN is required}
+      MEM_GUARD_ALLOW_DEFAULT_SCOPE: "false"
+      MEM_GUARD_SAFETY_MODE: ${MEMGUARD_SAFETY_MODE:-redact}
+      MEM_GUARD_RATE_LIMIT_PER_MINUTE: ${MEMGUARD_RATE_LIMIT_PER_MINUTE:-120}
+      MEM_GUARD_DAILY_EMBEDDING_TOKENS: ${MEMGUARD_DAILY_EMBEDDING_TOKENS:-200000}
+      MEM_GUARD_DAILY_RETRIEVAL_TOKENS: ${MEMGUARD_DAILY_RETRIEVAL_TOKENS:-500000}
+      MEM_GUARD_STATE_DIR: /var/lib/mem-guard
+    volumes:
+      - memguard_state:/var/lib/mem-guard
+    # Internal only: no published port. OmniCare reaches it on the compose network.
+    expose:
+      - "8080"
+    depends_on:
+      nanomemory:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nanomemory:
+    build: ../nanomemory
+    environment:
+      NANOMEMORY_ENVIRONMENT: production
+      NANOMEMORY_STORAGE_ROOT: /data
+      NANOMEMORY_CONTEXT_SIGNING_KEY: ${MEMGUARD_CONTEXT_SIGNING_KEY:?MEMGUARD_CONTEXT_SIGNING_KEY is required}
+      NANOMEMORY_ADMIN_TOKEN: ${NANOMEMORY_ADMIN_TOKEN:?NANOMEMORY_ADMIN_TOKEN is required}
+      # Offline default: lexical hashing embeddings. Set openai_compatible + key/dim in prod.
+      NANOMEMORY_EMBEDDING_PROVIDER: ${NANOMEMORY_EMBEDDING_PROVIDER:-hashing}
+      NANOMEMORY_EMBEDDING_MODEL: ${NANOMEMORY_EMBEDDING_MODEL:-text-embedding-3-small}
+      NANOMEMORY_EMBEDDING_DIMENSION: ${NANOMEMORY_EMBEDDING_DIMENSION:-384}
+      NANOMEMORY_EMBEDDING_API_KEY: ${NANOMEMORY_EMBEDDING_API_KEY:-}
+      NANOMEMORY_EMBEDDING_BASE_URL: ${NANOMEMORY_EMBEDDING_BASE_URL:-}
+      NANOMEMORY_VECTOR_CONTENT_FLOOR: ${NANOMEMORY_VECTOR_CONTENT_FLOOR:-0.10}
+    volumes:
+      - nanomemory_data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
@@ -54,3 +111,5 @@ services:
 
 volumes:
   pgdata:
+  memguard_state:
+  nanomemory_data:

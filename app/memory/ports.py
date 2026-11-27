@@ -2,6 +2,16 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 
+class MemoryBackendError(RuntimeError):
+    """A memory backend refused or could not serve the request (typed for degradation)."""
+
+    def __init__(self, code: str, message: str, *, status: int = 0) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status = status
+
+
 @dataclass(slots=True)
 class MemoryRecord:
     id: str
@@ -17,10 +27,10 @@ class MemoryRecord:
 
 
 def normalize_provenance(raw: object) -> dict[str, str]:
-    """Coerce a backend provenance payload to the auditable ``dict[str, str]`` shape.
+    """Coerce a backend provenance payload to the auditable dict[str, str] shape.
 
-    Backends may return ``None``, nested lists or null fields (NanoMemory 0.2.0 reports
-    ``source_ref: null`` and ``derived_from: []``); only string values are meaningful here.
+    Backends may return None, nested lists or null fields (NanoMemory reports
+    source_ref: null and derived_from: []); only string values are meaningful here.
     """
     if not isinstance(raw, dict):
         return {}
@@ -29,8 +39,15 @@ def normalize_provenance(raw: object) -> dict[str, str]:
 
 class MemoryPort(Protocol):
     async def retrieve(
-        self, *, user_id: str, session_id: str, query: str, limit: int = 6
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        query: str,
+        limit: int = 6,
+        tenant_id: str = "default",
     ) -> list[MemoryRecord]: ...
+
     async def remember_preference(
         self,
         *,
@@ -40,4 +57,5 @@ class MemoryPort(Protocol):
         source: str,
         source_ref: str = "",
         created_by: str = "omnicare",
+        tenant_id: str = "default",
     ) -> MemoryRecord: ...

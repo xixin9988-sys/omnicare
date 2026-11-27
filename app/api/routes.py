@@ -40,7 +40,9 @@ from app.models.entities import (
     User,
 )
 from app.schemas.chat import ChatRequest, ChatResponse, ProductOut, SessionCreate
+from app.schemas.feedback import FeedbackIn, FeedbackOut
 from app.schemas.refunds import RefundAuditOut, RefundDecisionRequest, RefundOut
+from app.services.feedback import FeedbackError, submit_feedback
 from app.services.memory_provenance import (
     get_memory_provenance,
     resolve_attestation_secret,
@@ -243,6 +245,30 @@ async def memory_provenance(
         row=row, secret=resolve_attestation_secret(get_settings())
     )
     return serialize_memory_provenance(row, verified=verified)
+
+
+@router.post("/feedback", response_model=FeedbackOut, status_code=201)
+async def create_feedback(
+    payload: FeedbackIn,
+    principal: Principal = Depends(get_principal),
+):
+    """Record a thumbs up/down for one answer, linked to its memory trace."""
+    try:
+        data = await submit_feedback(get_settings(), principal, payload)
+    except FeedbackError as error:
+        headers = {"Retry-After": error.retry_after} if error.retry_after else None
+        raise HTTPException(
+            status_code=error.status,
+            detail={"code": error.code, "message": error.message},
+            headers=headers,
+        ) from error
+    return FeedbackOut(
+        feedback_id=str(data.get("feedback_id") or ""),
+        trace_id=str(data.get("trace_id") or payload.trace_id),
+        verdict=str(data.get("verdict") or payload.verdict),
+        forwarded=bool(data.get("forwarded", True)),
+        created_at=str(data.get("created_at") or ""),
+    )
 
 
 @router.get("/refunds/mine", response_model=list[RefundOut])

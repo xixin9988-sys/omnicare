@@ -23,7 +23,13 @@ class LocalFileMemoryAdapter:
         return self.root / f"{digest}.jsonl"
 
     async def retrieve(
-        self, *, user_id: str, session_id: str, query: str, limit: int = 6
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        query: str,
+        limit: int = 6,
+        tenant_id: str = "default",
     ) -> list[MemoryRecord]:
         path = self._path(user_id)
         if not path.exists():
@@ -69,6 +75,7 @@ class LocalFileMemoryAdapter:
         source: str,
         source_ref: str = "",
         created_by: str = "omnicare",
+        tenant_id: str = "default",
     ) -> MemoryRecord:
         provenance = {"source_kind": "user", "source_ref": source_ref, "created_by": created_by}
         record = MemoryRecord(

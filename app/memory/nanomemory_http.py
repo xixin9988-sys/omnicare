@@ -159,7 +159,13 @@ class NanoMemoryHTTPAdapter:
         return {str(row.get("id")): row for row in response.json().get("records", [])}
 
     async def retrieve(
-        self, *, user_id: str, session_id: str, query: str, limit: int = 6
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        query: str,
+        limit: int = 6,
+        tenant_id: str = "default",
     ) -> list[MemoryRecord]:
         async with await self._open(session_id) as client:
             response = await client.get(
@@ -181,6 +187,7 @@ class NanoMemoryHTTPAdapter:
         source: str,
         source_ref: str = "",
         created_by: str = "omnicare",
+        tenant_id: str = "default",
     ) -> MemoryRecord:
         # The provenance object is the server-side half of the audit chain: source_kind says
         # the bytes came from a user turn, source_ref points at the OmniCare session/run.
