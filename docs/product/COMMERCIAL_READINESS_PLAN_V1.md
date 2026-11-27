@@ -17,8 +17,8 @@ NanoMemory owns persistent memory records, embeddings and retrieval. mem-guard o
 - Trusted OIDC/JWT identity, tenant membership and role/scope enforcement.
 - Dedicated agent contracts for shopping, logistics and after-sales, orchestrated by a bounded supervisor.
 - Pydantic input/output schemas for agent decisions and tool arguments; no free-form LLM JSON trusted without runtime validation.
-- NanoMemory vector recall using authenticated tenant/user/session/collection filters.
-- mem-guard pre-retrieval policy compilation and action authorization.
+- NanoMemory vector recall using authenticated tenant/user/session/collection context mapped to physical security domains; the ANN query may only scan authorized partitions.
+- mem-guard pre-retrieval policy compilation and action authorization. Fine-grained ACLs outside a physical domain require exact filtered search or denial.
 - Business database remains authoritative for price, stock, order ownership, payment, delivery and refund state.
 - Persisted run traces, retrieval references/scores, token and latency metrics, governance decisions, and user feedback.
 - Payment/refund provider abstraction with signed webhook verification, idempotency, reconciliation and append-only ledger.
@@ -89,7 +89,7 @@ Add explicit 👍 / 👎 feedback linked to run ID, optionally with a reason cat
 - BFF derives subject and tenant from a verified identity token; request-body user_id is only a consistency assertion and cannot grant identity.
 - Tenant ID is mandatory on every tenant-owned row and query.
 - PostgreSQL RLS and application-level authorization are both required for sensitive tables.
-- NanoMemory query filters are applied before vector candidate ranking. Cross-tenant canary tests must prove zero leakage.
+- NanoMemory resolves allowed security domains before retrieval and uses partition pruning into those domains before local ANN search. RLS and SQL predicates provide defence in depth. Do not rely on global HNSW plus post-scan filters for tenant isolation; cross-tenant and cross-owner canaries plus EXPLAIN-plan tests must prove the access boundary.
 - mem-guard is used for memory trust and action governance, not as a replacement for database authorization.
 - MCP identity is derived from the verified bearer token; tools do not accept caller-supplied user_id/token fields as authority.
 - Secret scanning, dependency scanning, security headers, request size limits, CSRF protection where cookie sessions are used, rate limits and audit retention are CI/release requirements.
@@ -126,7 +126,7 @@ Report results by task category and use confidence intervals where sample size p
 - Given an expired, malformed or wrong-audience token, when the request is submitted, then the BFF returns 401 and emits a safe security event.
 
 ### US-O02 — Safe vector memory recall
-- Given two customers with similar preferences in different tenants, when customer A asks a question, then no customer B memory enters the retrieval candidate set or model context.
+- Given two customers with similar preferences in different tenants, when customer A asks a question, then only customer A's authorized security-domain partitions are searched and no customer B memory enters the candidate set or model context.
 - Given a memory marked pending_confirmation or quarantined, when a customer asks for it, then governance excludes it according to policy.
 - Given NanoMemory or mem-guard is unavailable, when memory-dependent processing starts, then OmniCare follows an explicit degraded/abstain path and never falls back to unfiltered memory.
 
@@ -158,7 +158,7 @@ Every customer and operator flow must define loading, empty, validation error, d
 
 1. Freeze contracts between OmniCare, NanoMemory and mem-guard.
 2. Add evaluation set and negative/security cases before changing agent prompts.
-3. Add tenant-scoped vector memory adapter and pre-retrieval authorization integration.
+3. Add security-domain-scoped vector memory adapter and pre-retrieval authorization integration; verify partition pruning and exact-filter fallback.
 4. Add structured run trace and feedback loop.
 5. Complete payment/refund provider and ledger reconciliation.
 6. Complete DB migration, RLS, outbox/event broker and tested backup/restore.
