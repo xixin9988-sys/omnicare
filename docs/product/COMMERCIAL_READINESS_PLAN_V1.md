@@ -166,7 +166,34 @@ Every customer and operator flow must define loading, empty, validation error, d
 8. Complete Docker production run, deployment/rollback drill and cost model.
 9. Pilot with a limited number of real users, review feedback weekly and expand only after release gates pass.
 
-## 11. Approval
+## 11. Cost, legal and AI governance
+
+### Unit economics
+Track exact and estimated usage separately for each tenant, run and request:
+- embedding input tokens and provider cost;
+- reranking tokens/requests and cost;
+- LLM prompt/completion tokens and cost;
+- PostgreSQL compute, storage, index and backup allocation;
+- event/trace retention, network and support allocation;
+- cost per active customer, order, conversation and successful business task.
+
+Per-tenant budgets and quotas must cover model tokens, embedding volume, API requests, storage and tool execution. A quota breach returns an explicit error or a documented degraded path; it must not silently drop writes or perform unauthorized fallback. Price tiers must be based on measured usage and support cost, not guessed token estimates.
+
+### AI risk governance
+Map the operating controls to the NIST AI RMF functions (Govern, Map, Measure, Manage) and assess whether ISO/IEC 42001 organizational AI management-system practices are relevant. This mapping is a governance aid, not a certification or compliance claim. Maintain a risk register, model/provider inventory, data-flow map, evaluation evidence, incident log, human escalation path and periodic risk review.
+
+### Legal / IP readiness
+Before commercial distribution, prepare an IP FAQ and inventory:
+- OmniCare and dependency licenses, notices and SBOM;
+- provider/model terms, data retention, region and commercial-use permissions;
+- customer data ownership, retention, deletion/export and subprocessors;
+- payment provider responsibilities and webhook/security obligations;
+- third-party assets, trademarks and contributed code;
+- patent notices and process for responding to IP claims.
+
+Do not imply that the repository license grants rights to third-party models, hosted APIs, datasets or dependencies.
+
+## 12. Approval
 
 - Product owner: PENDING
 - Technical owner: PENDING
